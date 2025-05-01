@@ -7,72 +7,77 @@ async function main() {
     // Token image URI
     const tokenImageURI = "ipfs://bafybeiagahmsxgp5wwx5vstgygt6bwbmvtwmkuaup3pevf55nnewj4ui2e";
 
-    // Deploy SimbiToken first
+    // Deploy SimbiToken
     console.log("Deploying SimbiToken...");
     const SimbiToken = await hre.ethers.getContractFactory("SimbiToken");
-    const simbiToken = await SimbiToken.deploy(tokenImageURI);
-    await simbiToken.deployed();
-    console.log(`✅ SimbiToken deployed to: ${simbiToken.address}`);
+    const simbiTokenTx = await SimbiToken.deploy(tokenImageURI);
+    const simbiTokenReceipt = await simbiTokenTx.deploymentTransaction().wait();
+    const simbiTokenAddress = simbiTokenReceipt.contractAddress;
+    console.log(`✅ SimbiToken deployed to: ${simbiTokenAddress}`);
     console.log(`Token Image URI: ${tokenImageURI}`);
+
+    // Log token distribution information
+    const creatorSupply = await simbiTokenTx.balanceOf(deployer.address);
+    const userSupplyCap = await simbiTokenTx.getRemainingUserSupply();
+    console.log("\nToken Distribution:");
+    console.log("===================");
+    console.log(`Creator's Share (40%): ${creatorSupply.toString()} SIMBI`);
+    console.log(`Available for Users (60%): ${userSupplyCap.toString()} SIMBI`);
 
     // Deploy SimbiBadgeNFT
     console.log("Deploying SimbiBadgeNFT...");
     const SimbiBadgeNFT = await hre.ethers.getContractFactory("SimbiBadgeNFT");
-    const simbiBadgeNFT = await SimbiBadgeNFT.deploy();
-    await simbiBadgeNFT.deployed();
-    console.log(`✅ SimbiBadgeNFT deployed to: ${simbiBadgeNFT.address}`);
+    const simbiBadgeNFTTx = await SimbiBadgeNFT.deploy();
+    const simbiBadgeNFTReceipt = await simbiBadgeNFTTx.deploymentTransaction().wait();
+    const simbiBadgeNFTAddress = simbiBadgeNFTReceipt.contractAddress;
+    console.log(`✅ SimbiBadgeNFT deployed to: ${simbiBadgeNFTAddress}`);
 
     // Deploy SimbiCredentialNFT
     console.log("Deploying SimbiCredentialNFT...");
     const SimbiCredentialNFT = await hre.ethers.getContractFactory("SimbiCredentialNFT");
-    const simbiCredentialNFT = await SimbiCredentialNFT.deploy();
-    await simbiCredentialNFT.deployed();
-    console.log(`✅ SimbiCredentialNFT deployed to: ${simbiCredentialNFT.address}`);
+    const simbiCredentialNFTTx = await SimbiCredentialNFT.deploy();
+    const simbiCredentialNFTReceipt = await simbiCredentialNFTTx.deploymentTransaction().wait();
+    const simbiCredentialNFTAddress = simbiCredentialNFTReceipt.contractAddress;
+    console.log(`✅ SimbiCredentialNFT deployed to: ${simbiCredentialNFTAddress}`);
 
-    // Deploy SimbiQuizManager last (as it might interact with other contracts)
+    // Deploy SimbiQuizManager
     console.log("Deploying SimbiQuizManager...");
     const SimbiQuizManager = await hre.ethers.getContractFactory("SimbiQuizManager");
-    const simbiQuizManager = await SimbiQuizManager.deploy(
-        simbiToken.address,
-        simbiBadgeNFT.address,
-        simbiCredentialNFT.address
+    const simbiQuizManagerTx = await SimbiQuizManager.deploy(
+        simbiTokenAddress,
+        simbiBadgeNFTAddress,
+        simbiCredentialNFTAddress
     );
-    await simbiQuizManager.deployed();
-    console.log(`✅ SimbiQuizManager deployed to: ${simbiQuizManager.address}`);
-
-    // Verify contracts on BaseScan
-    console.log("\nWaiting for 5 block confirmations before verification...");
-    await simbiToken.deployTransaction.wait(5);
-    await simbiBadgeNFT.deployTransaction.wait(5);
-    await simbiCredentialNFT.deployTransaction.wait(5);
-    await simbiQuizManager.deployTransaction.wait(5);
+    const simbiQuizManagerReceipt = await simbiQuizManagerTx.deploymentTransaction().wait();
+    const simbiQuizManagerAddress = simbiQuizManagerReceipt.contractAddress;
+    console.log(`✅ SimbiQuizManager deployed to: ${simbiQuizManagerAddress}`);
 
     console.log("\nVerifying contracts on BaseScan...");
     try {
         await hre.run("verify:verify", {
-            address: simbiToken.address,
+            address: simbiTokenAddress,
             constructorArguments: [tokenImageURI],
         });
         console.log("✅ SimbiToken verified");
 
         await hre.run("verify:verify", {
-            address: simbiBadgeNFT.address,
+            address: simbiBadgeNFTAddress,
             constructorArguments: [],
         });
         console.log("✅ SimbiBadgeNFT verified");
 
         await hre.run("verify:verify", {
-            address: simbiCredentialNFT.address,
+            address: simbiCredentialNFTAddress,
             constructorArguments: [],
         });
         console.log("✅ SimbiCredentialNFT verified");
 
         await hre.run("verify:verify", {
-            address: simbiQuizManager.address,
+            address: simbiQuizManagerAddress,
             constructorArguments: [
-                simbiToken.address,
-                simbiBadgeNFT.address,
-                simbiCredentialNFT.address
+                simbiTokenAddress,
+                simbiBadgeNFTAddress,
+                simbiCredentialNFTAddress
             ],
         });
         console.log("✅ SimbiQuizManager verified");
@@ -82,19 +87,11 @@ async function main() {
 
     console.log("\nDeployment Summary:");
     console.log("===================");
-    console.log(`SimbiToken: ${simbiToken.address}`);
+    console.log(`SimbiToken: ${simbiTokenAddress}`);
     console.log(`Token Image URI: ${tokenImageURI}`);
-    console.log(`SimbiBadgeNFT: ${simbiBadgeNFT.address}`);
-    console.log(`SimbiCredentialNFT: ${simbiCredentialNFT.address}`);
-    console.log(`SimbiQuizManager: ${simbiQuizManager.address}`);
-    
-    // Log token distribution information
-    const creatorSupply = await simbiToken.balanceOf(deployer.address);
-    const userSupplyCap = await simbiToken.getRemainingUserSupply();
-    console.log("\nToken Distribution:");
-    console.log("===================");
-    console.log(`Creator's Share (40%): ${creatorSupply.toString()} SIMBI`);
-    console.log(`Available for Users (60%): ${userSupplyCap.toString()} SIMBI`);
+    console.log(`SimbiBadgeNFT: ${simbiBadgeNFTAddress}`);
+    console.log(`SimbiCredentialNFT: ${simbiCredentialNFTAddress}`);
+    console.log(`SimbiQuizManager: ${simbiQuizManagerAddress}`);
 }
 
 main()
