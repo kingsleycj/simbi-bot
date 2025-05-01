@@ -4,7 +4,10 @@ const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 const { ethers } = require('ethers');
 const fs = require('fs');
+const schedule = require('node-schedule');
 require('dotenv').config();
+
+const quizData = require('./utils/quizQuestions.json');
 
 // Debug environment variables
 console.log('Environment Variables:');
@@ -82,6 +85,10 @@ const handleMenuCommand = (chatId) => {
         [
           { text: "📄 View Profile", callback_data: 'profile' },
           { text: "❓ Help", callback_data: 'help' }
+        ],
+        [
+          { text: "⏰ Set Reminder", callback_data: 'reminder' },
+          { text: "📊 Track Progress", callback_data: 'progress' }
         ]
       ]
     }
@@ -89,6 +96,152 @@ const handleMenuCommand = (chatId) => {
 
   bot.sendMessage(chatId, '📋 *Main Menu*\n\nChoose an option below:', { parse_mode: 'Markdown', ...menuOptions })
     .catch(error => console.error('Error sending menu:', error));
+};
+
+// === Handle /quiz Command ===
+const handleQuizCommand = (msg) => {
+  const chatId = msg.chat.id.toString();
+  const quiz = quizData.quizzes[Math.floor(Math.random() * quizData.quizzes.length)];
+
+  const options = {
+    reply_markup: {
+      inline_keyboard: quiz.options.map((option, index) => [
+        { text: option, callback_data: `quiz_${index}` }
+      ])
+    }
+  };
+
+  bot.sendMessage(chatId, `📝 *Quiz Time!*
+
+${quiz.question}`, { parse_mode: 'Markdown', ...options })
+    .then(() => {
+      bot.once('callback_query', (query) => {
+        const selectedOption = quiz.options[parseInt(query.data.split('_')[1])];
+
+        if (selectedOption === quiz.answer) {
+          bot.sendMessage(chatId, '🎉 Correct! You earned 10 SIMBI tokens!');
+
+          // Reward user with SIMBI tokens
+          const userAddress = users[chatId]?.address;
+          if (userAddress) {
+            const quizManager = new ethers.Contract(
+              process.env.SIMBIQUIZMANAGER_CA,
+              [
+                "function completeQuiz(address user, uint256 score) external"
+              ],
+              new ethers.Wallet(process.env.PRIVATE_KEY, new ethers.providers.JsonRpcProvider(process.env.BASE_SEPOLIA_RPC_URL))
+            );
+
+            quizManager.completeQuiz(userAddress, 100).catch((error) => {
+              console.error('Error rewarding tokens:', error);
+              bot.sendMessage(chatId, '⚠️ Failed to reward tokens. Please try again later.');
+            });
+          }
+        } else {
+          bot.sendMessage(chatId, '❌ Incorrect! Better luck next time.');
+        }
+
+        bot.answerCallbackQuery(query.id).catch((error) => console.error('Error answering callback query:', error));
+      });
+    })
+    .catch((error) => console.error('Error sending quiz question:', error));
+};
+
+// === Handle /sync Command ===
+const handleSyncCommand = (msg) => {
+  const chatId = msg.chat.id.toString();
+
+  bot.sendMessage(chatId, '🔗 Please enter your web app user ID to sync your account:', { reply_markup: { force_reply: true } })
+    .then((sentMessage) => {
+      bot.onReplyToMessage(sentMessage.chat.id, sentMessage.message_id, (reply) => {
+        const userId = reply.text.trim();
+
+        // Simulate syncing with web app database
+        // In production, replace this with an API call to the web app backend
+        if (userId) {
+          users[chatId] = { ...users[chatId], webAppUserId: userId };
+          saveUsers();
+
+          bot.sendMessage(chatId, `✅ Your Telegram account has been successfully synced with your web app account (User ID: ${userId}).`);
+        } else {
+          bot.sendMessage(chatId, '❌ Invalid User ID. Please try again.');
+        }
+      });
+    })
+    .catch((error) => console.error('Error handling /sync command:', error));
+};
+
+// === Handle Reminder Feature ===
+const reminders = {}; // Store reminders for each user
+
+const handleSetReminderCommand = (msg) => {
+  const chatId = msg.chat.id.toString();
+
+  bot.sendMessage(chatId, '⏰ Please enter the time for your reminder (e.g., 14:30 for 2:30 PM):', { reply_markup: { force_reply: true } })
+    .then((sentMessage) => {
+      bot.onReplyToMessage(sentMessage.chat.id, sentMessage.message_id, (reply) => {
+        const time = reply.text.trim();
+
+        // Validate time format (HH:mm)
+        const timeRegex = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+        if (!timeRegex.test(time)) {
+          bot.sendMessage(chatId, '❌ Invalid time format. Please use HH:mm format.');
+          return;
+        }
+
+        const [hour, minute] = time.split(':').map(Number);
+
+        // Schedule the reminder
+        const job = schedule.scheduleJob({ hour, minute }, () => {
+          bot.sendMessage(chatId, '📚 Reminder: It’s time to study! Let’s achieve your goals with SIMBI!');
+        });
+
+        // Save the reminder job
+        reminders[chatId] = job;
+
+        bot.sendMessage(chatId, `✅ Reminder set for ${time}.`);
+      });
+    })
+    .catch((error) => console.error('Error handling reminder command:', error));
+};
+
+// === Handle On-Chain Progress Tracking ===
+const handleTrackProgressCommand = (msg) => {
+  const chatId = msg.chat.id.toString();
+  const userAddress = users[chatId]?.address;
+
+  if (!userAddress) {
+    bot.sendMessage(chatId, '❗ You have no wallet yet. Use /start to create one.');
+    return;
+  }
+
+  const provider = new ethers.providers.JsonRpcProvider(process.env.BASE_SEPOLIA_RPC_URL);
+  const simbiToken = new ethers.Contract(
+    process.env.SIMBI_CONTRACT_ADDRESS,
+    ["function balanceOf(address account) view returns (uint256)"],
+    provider
+  );
+
+  const simbiBadgeNFT = new ethers.Contract(
+    process.env.SIMBIBADGE_NFT_CA,
+    ["function balanceOf(address owner) view returns (uint256)"],
+    provider
+  );
+
+  Promise.all([
+    simbiToken.balanceOf(userAddress),
+    simbiBadgeNFT.balanceOf(userAddress)
+  ])
+    .then(([tokenBalance, nftCount]) => {
+      bot.sendMessage(chatId, `📊 *On-Chain Progress*
+
+👛 *SIMBI Token Balance:* ${ethers.utils.formatEther(tokenBalance)} SIMBI
+🏅 *NFT Achievements:* ${nftCount} NFTs`, { parse_mode: 'Markdown' });
+    })
+    .catch((error) => {
+      console.error('Error fetching on-chain progress:', error);
+      bot.sendMessage(chatId, '⚠️ Failed to fetch on-chain progress. Please try again later.');
+    });
 };
 
 // === Handle Callback Queries (Button Presses) ===
@@ -131,11 +284,25 @@ bot.on('callback_query', (query) => {
         .catch(error => console.error('Error sending help message:', error));
       break;
 
+    case 'reminder':
+      handleSetReminderCommand(query.message);
+      break;
+
+    case 'progress':
+      handleTrackProgressCommand(query.message);
+      break;
+
     default:
       bot.sendMessage(chatId, '❓ Unknown action.')
         .catch(error => console.error('Error sending unknown action message:', error));
   }
 });
+
+// Register /quiz command
+bot.onText(/\/quiz/, handleQuizCommand);
+
+// Register /sync command
+bot.onText(/\/sync/, handleSyncCommand);
 
 // Set up command handlers
 bot.onText(/\/start/, handleStartCommand);

@@ -1,0 +1,54 @@
+{
+  "quizzes": [
+    {
+      "question": "What is the capital of France?",
+      "options": ["Paris", "London", "Berlin", "Madrid"],
+      "answer": "Paris"
+    },
+    {
+      "question": "What is 2 + 2?",
+      "options": ["3", "4", "5", "6"],
+      "answer": "4"
+    },
+    {
+      "question": "Who wrote 'Hamlet'?",
+      "options": ["Charles Dickens", "William Shakespeare", "Mark Twain", "Jane Austen"],
+      "answer": "William Shakespeare"
+    },
+    {
+      "question": "What is the largest planet in our solar system?",
+      "options": ["Earth", "Mars", "Jupiter", "Saturn"],
+      "answer": "Jupiter"
+    },
+    {
+      "question": "What is the chemical symbol for water?",
+      "options": ["H2O", "O2", "CO2", "NaCl"],
+      "answer": "H2O"
+    },
+    {
+      "question": "What is the speed of light?",
+      "options": ["300,000 km/s", "150,000 km/s", "1,000 km/s", "500,000 km/s"],
+      "answer": "300,000 km/s"
+    },
+    {
+      "question": "Who painted the Mona Lisa?",
+      "options": ["Vincent van Gogh", "Leonardo da Vinci", "Pablo Picasso", "Claude Monet"],
+      "answer": "Leonardo da Vinci"
+    },
+    {
+      "question": "What is the smallest prime number?",
+      "options": ["0", "1", "2", "3"],
+      "answer": "2"
+    },
+    {
+      "question": "What is the powerhouse of the cell?",
+      "options": ["Nucleus", "Mitochondria", "Ribosome", "Golgi apparatus"],
+      "answer": "Mitochondria"
+    },
+    {
+      "question": "What is the square root of 64?",
+      "options": ["6", "7", "8", "9"],
+      "answer": "8"
+    }
+  ]
+}
