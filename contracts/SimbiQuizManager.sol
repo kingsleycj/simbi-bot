@@ -28,8 +28,8 @@ contract SimbiQuizManager is Ownable {
     function completeQuiz(address user, uint256 score) external onlyOwner {
         completedQuizzes[user]++;
 
-        // Reward tokens
-        token.mint(user, rewardPerQuiz);
+        // Reward tokens (using mintToUser for quiz rewards)
+        token.mintToUser(user, rewardPerQuiz);
 
         // Record quiz attempt for badge eligibility
         badgeNFT.recordQuizAttempt(user, score);
@@ -46,5 +46,10 @@ contract SimbiQuizManager is Ownable {
             credentialNFT.safeMint(user, "ipfs://bafkreiam74mj26do4if5zu6lwq2p4igadhxrspamlnmzzksmzgyrpunylq/");
             credentialIssued[user] = true;
         }
+    }
+
+    // Function to update reward amount (only owner)
+    function setRewardPerQuiz(uint256 newReward) external onlyOwner {
+        rewardPerQuiz = newReward;
     }
 }
