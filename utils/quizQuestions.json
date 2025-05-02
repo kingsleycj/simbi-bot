@@ -2,7 +2,12 @@
   "history": [
     {
       "question": "Who was the first President of the United States?",
-      "options": ["George Washington", "Abraham Lincoln", "Thomas Jefferson", "John Adams"],
+      "options": [
+        "George Washington",
+        "Abraham Lincoln",
+        "Thomas Jefferson",
+        "John Adams"
+      ],
       "answer": "George Washington"
     },
     {
@@ -12,7 +17,12 @@
     },
     {
       "question": "Who discovered America?",
-      "options": ["Christopher Columbus", "Leif Erikson", "Amerigo Vespucci", "Ferdinand Magellan"],
+      "options": [
+        "Christopher Columbus",
+        "Leif Erikson",
+        "Amerigo Vespucci",
+        "Ferdinand Magellan"
+      ],
       "answer": "Christopher Columbus"
     },
     {
@@ -22,7 +32,12 @@
     },
     {
       "question": "Who was the British Prime Minister during World War II?",
-      "options": ["Winston Churchill", "Neville Chamberlain", "Clement Attlee", "Margaret Thatcher"],
+      "options": [
+        "Winston Churchill",
+        "Neville Chamberlain",
+        "Clement Attlee",
+        "Margaret Thatcher"
+      ],
       "answer": "Winston Churchill"
     },
     {
@@ -37,12 +52,22 @@
     },
     {
       "question": "What was the name of the treaty that ended World War I?",
-      "options": ["Treaty of Versailles", "Treaty of Paris", "Treaty of Ghent", "Treaty of Tordesillas"],
+      "options": [
+        "Treaty of Versailles",
+        "Treaty of Paris",
+        "Treaty of Ghent",
+        "Treaty of Tordesillas"
+      ],
       "answer": "Treaty of Versailles"
     },
     {
       "question": "Who was the first woman to fly solo across the Atlantic Ocean?",
-      "options": ["Amelia Earhart", "Harriet Quimby", "Bessie Coleman", "Jacqueline Cochran"],
+      "options": [
+        "Amelia Earhart",
+        "Harriet Quimby",
+        "Bessie Coleman",
+        "Jacqueline Cochran"
+      ],
       "answer": "Amelia Earhart"
     },
     {
@@ -59,7 +84,7 @@
     },
     {
       "question": "What planet is known as the Red Planet?",
-      "options": ["Mars", "Venus", "Jupiter", "Saturn"],
+      "options": ["Earth", "Mars", "Jupiter", "Venus"],
       "answer": "Mars"
     },
     {
@@ -163,7 +188,12 @@
     },
     {
       "question": "What is the primary function of the legislative branch?",
-      "options": ["Make laws", "Enforce laws", "Interpret laws", "Elect officials"],
+      "options": [
+        "Make laws",
+        "Enforce laws",
+        "Interpret laws",
+        "Elect officials"
+      ],
       "answer": "Make laws"
     },
     {
@@ -173,7 +203,12 @@
     },
     {
       "question": "What is the highest court in the United States?",
-      "options": ["Supreme Court", "Federal Court", "District Court", "Appellate Court"],
+      "options": [
+        "Supreme Court",
+        "Federal Court",
+        "District Court",
+        "Appellate Court"
+      ],
       "answer": "Supreme Court"
     },
     {
@@ -183,7 +218,12 @@
     },
     {
       "question": "What is the name of the lower house of the U.S. Congress?",
-      "options": ["House of Representatives", "Senate", "Parliament", "Assembly"],
+      "options": [
+        "House of Representatives",
+        "Senate",
+        "Parliament",
+        "Assembly"
+      ],
       "answer": "House of Representatives"
     },
     {
@@ -193,18 +233,40 @@
     },
     {
       "question": "What is the primary role of the executive branch?",
-      "options": ["Enforce laws", "Make laws", "Interpret laws", "Elect officials"],
+      "options": [
+        "Enforce laws",
+        "Make laws",
+        "Interpret laws",
+        "Elect officials"
+      ],
       "answer": "Enforce laws"
     },
     {
       "question": "What is the name of the U.S. national anthem?",
-      "options": ["The Star-Spangled Banner", "America the Beautiful", "God Bless America", "My Country, 'Tis of Thee"],
+      "options": [
+        "The Star-Spangled Banner",
+        "America the Beautiful",
+        "God Bless America",
+        "My Country, 'Tis of Thee"
+      ],
       "answer": "The Star-Spangled Banner"
     },
     {
       "question": "What is the term for a system of government where power is divided between a central authority and smaller political units?",
       "options": ["Federalism", "Monarchy", "Democracy", "Socialism"],
       "answer": "Federalism"
+    }
+  ],
+  "general": [
+    {
+      "question": "What is the capital of France?",
+      "options": ["Paris", "London", "Berlin", "Madrid"],
+      "answer": "Paris"
+    },
+    {
+      "question": "What is 2 + 2?",
+      "options": ["3", "4", "5", "6"],
+      "answer": "4"
     }
   ]
 }
