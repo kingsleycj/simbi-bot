@@ -32,7 +32,7 @@ const handleQuizCommand = (bot, users, chatId) => {
 };
 
 const handleQuizCallback = (bot, users, chatId, data) => {
-  const category = data.split('_')[1]; // Extract category from callback_data
+  const category = data.split('_')[1];
 
   if (!quizData[category]) {
     console.error(`Invalid category received: "${category}".`);
@@ -48,11 +48,21 @@ const handleQuizCallback = (bot, users, chatId, data) => {
   const userProgress = users[chatId];
   const quizzes = quizData[category];
 
+  // Debugging logs
+  console.log('User Progress:', userProgress);
+  console.log('Quizzes:', quizzes);
+
+  if (!quizzes || quizzes.length === 0) {
+    console.error(`No quizzes available for category: "${category}".`);
+    bot.sendMessage(chatId, `❌ No quizzes available for category: "${category}". Please try again later.`);
+    return;
+  }
+
   if (userProgress.currentQuestionIndex >= quizzes.length) {
     console.log(`Quiz completed for chatId: ${chatId}. Score: ${userProgress.score}`);
     bot.sendMessage(chatId, `🎉 Quiz Complete! Your score: ${userProgress.score}/${quizzes.length}`);
 
-    // Reward the user with SIMBI tokens
+    // Tokenization logic: Reward the user with SIMBI tokens
     const SIMBIQUIZMANAGER_CA = process.env.SIMBIQUIZMANAGER_CA;
     const PRIVATE_KEY = process.env.PRIVATE_KEY;
     const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
@@ -78,6 +88,12 @@ const handleQuizCallback = (bot, users, chatId, data) => {
   }
 
   const quiz = quizzes[userProgress.currentQuestionIndex];
+
+  if (!quiz || !quiz.options) {
+    console.error(`Invalid quiz data at index ${userProgress.currentQuestionIndex} for category: "${category}".`);
+    bot.sendMessage(chatId, `❌ Invalid quiz data. Please try again later.`);
+    return;
+  }
 
   const options = {
     reply_markup: {
@@ -113,8 +129,8 @@ const handleAnswerCallback = (bot, users, chatId, data) => {
     bot.sendMessage(chatId, '❌ Incorrect! Better luck next time.');
   }
 
-  userProgress.currentQuestionIndex += 1;
-  handleQuizCallback(bot, users, chatId, `quiz_${category}`);
+  userProgress.currentQuestionIndex += 1; // Move to the next question
+  handleQuizCallback(bot, users, chatId, `quiz_${category}`); // Send the next question
 };
 
 module.exports = { handleQuizCommand, handleQuizCallback, handleAnswerCallback };

@@ -119,10 +119,12 @@ bot.on('callback_query', (query) => {
       console.log('Triggering handleAchievementNFTs...');
       const { handleAchievementNFTs } = require('./bot/commands/trackProgress');
       handleAchievementNFTs(bot, users, chatId);
-    } else if (data === 'motivation' || data === 'humor') {
-      console.log('Triggering handlePersonalityResponse...');
-      const { handlePersonalityResponse } = require('./bot/commands/menu');
-      handlePersonalityResponse(bot, chatId, data);
+    } else if (data === 'motivation') {
+      const { handleMotivation } = require('./bot/commands/motivation');
+      handleMotivation(bot, chatId);
+    } else if (data === 'humor') {
+      const { handleHumor } = require('./bot/commands/humor');
+      handleHumor(bot, chatId);
     } else {
       console.log('Unknown action received:', data);
       bot.sendMessage(chatId, '❓ Unknown action. Please try again.');
