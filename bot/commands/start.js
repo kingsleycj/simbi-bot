@@ -6,7 +6,7 @@ const fs = require('fs');
 const handleStartCommand = (bot, users, chatId, USERS_DB_FILE) => {
   if (users[chatId]) {
     bot.sendMessage(chatId, `👋 Welcome back!
-Your SIMBI wallet address:
+Your wallet address on SIMBI AI-BOT is:
 
 \
 \`${users[chatId].address}\`
@@ -23,7 +23,7 @@ Use /menu to see available features.`, { parse_mode: 'Markdown' })
   users[chatId] = { address, privateKey, createdAt: new Date().toISOString() };
   fs.writeFileSync(USERS_DB_FILE, JSON.stringify(users, null, 2));
 
-  bot.sendMessage(chatId, `🎉 *Your SIMBI Wallet has been created!*
+  bot.sendMessage(chatId, `🎉 *Your Wallet ON SIMBI AI-BOT has been created!*
 
 *Address:* \
 \`${address}\`
