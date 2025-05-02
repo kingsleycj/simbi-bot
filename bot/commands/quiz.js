@@ -1,4 +1,3 @@
-const users = {};  // Add this at the top level of your application if not already present
 // This file handles the quiz command and its callback for a Telegram bot using Telegraf.js.
 // It allows users to select a quiz category, answer questions, and rewards them with tokens for correct answers.
 require('dotenv').config();
@@ -7,8 +6,52 @@ const fs = require('fs').promises;
 const path = require('path');
 const quizData = require('../../utils/quizQuestions.json');
 
+// Update the QUIZ_MANAGER_ABI to include all necessary functions
+const QUIZ_MANAGER_ABI = [
+  "function completeQuiz(address user, uint256 score) external",
+  "function getWalletAddress(address user) external view returns (address)",
+  "function owner() external view returns (address)",
+  "function token() external view returns (address)",
+  "function badgeNFT() external view returns (address)"
+];
+
+// Add this helper function at the top of the file
+async function verifyContractState(provider, contractAddress, userAddress) {
+  const quizManager = new ethers.Contract(
+    contractAddress,
+    QUIZ_MANAGER_ABI,
+    provider
+  );
+
+  console.log('Verifying contract state...');
+
+  try {
+    const owner = await quizManager.owner();
+    console.log('Contract owner:', owner);
+
+    const token = await quizManager.token();
+    console.log('Token contract:', token);
+
+    const badgeNFT = await quizManager.badgeNFT();
+    console.log('Badge NFT contract:', badgeNFT);
+
+    // Check if user is registered
+    const registeredWallet = await quizManager.getWalletAddress(userAddress);
+    console.log('Registered wallet for user:', registeredWallet);
+
+    if (registeredWallet.toLowerCase() !== userAddress.toLowerCase()) {
+      throw new Error('User wallet not properly registered');
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Contract verification failed:', error);
+    return false;
+  }
+}
+
 // Path to users.json file
-const USERS_FILE_PATH = path.join(__dirname, '../../../users.json');
+const USERS_FILE_PATH = path.join(process.cwd(), 'users.json');
 
 // Check if users.json exists
 (async () => {
@@ -224,58 +267,75 @@ const progressToNextQuestion = async (bot, users, chatId, category, quizzes) => 
         return;
       }
 
-      // Initialize contract with proper ABI
-      const quizManager = new ethers.Contract(
-        SIMBIQUIZMANAGER_CA,
-        [
-          "function completeQuiz(address user, uint256 score) external",
-          "function getWalletAddress(address user) external view returns (address)"
-        ],
-        provider
-      );
-
-      console.log('Tracked wallet:', trackedWallet);
-      
-      if (!trackedWallet) {
-        throw new Error('Wallet not properly registered. Please use /start again.');
+      // Add this check before sending the transaction
+      const isContractValid = await verifyContractState(provider, SIMBIQUIZMANAGER_CA, userAddress);
+      if (!isContractValid) {
+        throw new Error('Contract verification failed');
       }
 
-      // Initialize wallet with private key
-      const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
-      console.log('Bot wallet address:', wallet.address);
+      try {
+        // Initialize contract with proper ABI and signer
+        const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
+        
+        console.log('Initializing contract interaction...');
+        console.log('Contract address:', SIMBIQUIZMANAGER_CA);
+        console.log('User address:', userAddress);
+        console.log('Bot wallet address:', wallet.address);
 
-      // Send reward transaction
-      const tx = await quizManager.connect(wallet).completeQuiz(
-        userAddress,
-        finalScore * 10,
-        {
-          gasLimit: 300000
-        }
-      );
+        // Create interface for function encoding
+        const quizManagerInterface = new ethers.Interface(QUIZ_MANAGER_ABI);
+        
+        // Encode the function call
+        const data = quizManagerInterface.encodeFunctionData("completeQuiz", [
+          userAddress,
+          finalScore * 10
+        ]);
+        
+        console.log('Encoded transaction data:', data);
 
-      console.log('Transaction hash:', tx.hash);
+        // Create and send the transaction
+        const tx = await wallet.sendTransaction({
+          to: SIMBIQUIZMANAGER_CA,
+          data: data,
+          gasLimit: 500000
+        });
 
-      // Notify user about processing
-      bot.sendMessage(
-        chatId,
-        `🎉 Quiz Complete!\n` +
-        `Your final score: ${finalScore}/${totalQuestions}\n\n` +
-        `🎁 Processing ${finalScore * 10} SIMBI tokens...\n` +
-        `Transaction: https://sepolia.basescan.org/tx/${tx.hash}\n\n` +
-        `Use /menu to return to main menu`
-      );
-
-      // Wait for confirmation
-      const receipt = await tx.wait();
-      console.log('Transaction receipt:', receipt);
-
-      if (receipt.status === 1) {
-        bot.sendMessage(
+        console.log('Transaction hash:', tx.hash);
+        
+        await bot.sendMessage(
           chatId,
-          `✅ Tokens sent successfully!\n` +
-          `Received: ${finalScore * 10} SIMBI\n` +
-          `View: https://sepolia.basescan.org/tx/${receipt.hash}`
+          `🎉 Quiz Complete!\n` +
+          `Your final score: ${finalScore}/${totalQuestions}\n\n` +
+          `🎁 Processing ${finalScore * 10} SIMBI tokens...\n` +
+          `Transaction: https://sepolia.basescan.org/tx/${tx.hash}\n\n` +
+          `Use /menu to return to main menu`
         );
+
+        // Wait for confirmation with timeout
+        const receipt = await Promise.race([
+          tx.wait(1),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Transaction timeout')), 60000)
+          )
+        ]);
+
+        if (receipt.status === 1) {
+          await bot.sendMessage(
+            chatId,
+            `✅ Tokens sent successfully!\n` +
+            `Received: ${finalScore * 10} SIMBI\n` +
+            `View: https://sepolia.basescan.org/tx/${receipt.hash}`
+          );
+        } else {
+          throw new Error('Transaction failed');
+        }
+
+      } catch (error) {
+        console.error('Contract interaction error:', error);
+        
+        // More detailed error message
+        const errorMessage = error.reason || error.message || 'Unknown error';
+        throw new Error(`Transaction failed: ${errorMessage} (${error.code || 'NO_CODE'})`);
       }
 
     } catch (error) {
