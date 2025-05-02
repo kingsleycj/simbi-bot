@@ -1,9 +1,11 @@
+// This module handles the /menu command in a Telegram bot.
+// It sends a menu with various options to the user, including taking a quiz, checking wallet info, and more.
 const handleMenuCommand = (bot, chatId) => {
   const menuOptions = {
     reply_markup: {
       inline_keyboard: [
         [
-          { text: "🎮 Take a Quiz", callback_data: 'quiz' },
+          { text: "🎮 Take a Quiz", callback_data: 'quiz' }, // Updated to trigger category selection
           { text: "👛 Wallet Info", callback_data: 'wallet' }
         ],
         [

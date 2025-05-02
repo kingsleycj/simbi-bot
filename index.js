@@ -9,7 +9,7 @@ const { handleQuizCommand } = require('./bot/commands/quiz');
 const { handleSyncCommand } = require('./bot/commands/sync');
 const { handleConnectCommand } = require('./bot/commands/connect');
 const { handleSetReminderCommand } = require('./bot/commands/reminder');
-const { handleTrackProgressCommand } = require('./bot/commands/trackProgress');
+const { handleTrackProgressCommand, handleAchievementNFTs } = require('./bot/commands/trackProgress');
 
 // Debug environment variables
 console.log('Environment Variables:');
@@ -68,6 +68,45 @@ bot.on('message', (msg) => {
   if (!msg.text.startsWith('/')) {
     bot.sendMessage(msg.chat.id, '❓ Unknown command. Use /menu to see available options.')
       .catch(error => console.error('Error sending unknown command message:', error));
+  }
+});
+
+// Centralized callback_query handler
+bot.on('callback_query', (query) => {
+  bot.answerCallbackQuery(query.id).catch((error) => {
+    console.error('Error answering callback query:', error);
+  });
+
+  const chatId = query.message.chat.id;
+  const data = query.data;
+
+  console.log('Callback Query Data:', data);
+
+  if (data === 'quiz') {
+    const { handleQuizCommand } = require('./bot/commands/quiz');
+    handleQuizCommand(bot, chatId); // Trigger category selection
+  } else if (data.startsWith('quiz_')) {
+    const { handleQuizCallback } = require('./bot/commands/quiz');
+    handleQuizCallback(bot, users, chatId, data);
+  } else if (data === 'achievements') {
+    const { handleAchievementNFTs } = require('./bot/commands/trackProgress');
+    handleAchievementNFTs(bot, users, chatId);
+  } else if (data === 'motivation' || data === 'humor') {
+    const { handlePersonalityResponse } = require('./bot/commands/menu');
+    handlePersonalityResponse(bot, chatId, data);
+  } else if (data === 'wallet') {
+    bot.sendMessage(chatId, '👛 Wallet Info: This feature is under development.');
+  } else if (data === 'progress') {
+    const { handleTrackProgressCommand } = require('./bot/commands/trackProgress');
+    handleTrackProgressCommand(bot, users, chatId);
+  } else if (data === 'profile') {
+    bot.sendMessage(chatId, '📄 Profile Info: This feature is under development.');
+  } else if (data === 'help') {
+    bot.sendMessage(chatId, '❓ Help: Use the menu to navigate through available options.');
+  } else if (data === 'reminder') {
+    bot.sendMessage(chatId, '⏰ Reminder: This feature is under development.');
+  } else {
+    bot.sendMessage(chatId, '❓ Unknown action. Please try again.');
   }
 });
 
