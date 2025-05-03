@@ -1,6 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
-const fs = require('fs');
+const fs = require('fs').promises;
+const path = require('path');
 require('dotenv').config();
 
 const { handleStartCommand } = require('./bot/commands/start');
@@ -22,11 +23,29 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 const USERS_DB_FILE = './users.json';
 
+async function initializeUsersFile() {
+  const usersPath = path.join(__dirname, 'users.json');
+  try {
+    await fs.access(usersPath);
+    const data = await fs.readFile(usersPath, 'utf8');
+    try {
+      JSON.parse(data);
+    } catch (e) {
+      console.log('Invalid JSON in users.json, recreating...');
+      await fs.writeFile(usersPath, '{}', 'utf8');
+    }
+  } catch (error) {
+    console.log('Creating new users.json file...');
+    await fs.writeFile(usersPath, '{}', 'utf8');
+  }
+}
+
 // Initialize Express app
 const app = express();
 app.use(express.json());
 
 // Initialize Telegram Bot with webhook (no polling)
+await initializeUsersFile();
 const bot = new TelegramBot(BOT_TOKEN, { polling: false });
 
 // Set Webhook URL
@@ -145,6 +164,21 @@ app.post(webhookPath, (req, res) => {
     console.error('Error processing update:', error);
     res.sendStatus(500);
   }
+});
+
+// Add error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Server error:', err);
+  res.status(500).send('Internal server error');
+});
+
+// Add process error handlers
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled Rejection:', err);
 });
 
 // === Start the Express Server ===

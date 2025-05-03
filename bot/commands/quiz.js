@@ -1,54 +1,139 @@
 // This file handles the quiz command and its callback for a Telegram bot using Telegraf.js.
 // It allows users to select a quiz category, answer questions, and rewards them with tokens for correct answers.
+import { ethers } from 'ethers';
+import { promises as fs } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 require('dotenv').config();
-const ethers = require('ethers');
-const fs = require('fs').promises;
-const path = require('path');
 const quizData = require('../../utils/quizQuestions.json');
 
-// Update the QUIZ_MANAGER_ABI to include all necessary functions
+// Update QUIZ_MANAGER_ABI to include registerWallet
 const QUIZ_MANAGER_ABI = [
   "function completeQuiz(address user, uint256 score) external",
   "function getWalletAddress(address user) external view returns (address)",
   "function owner() external view returns (address)",
   "function token() external view returns (address)",
-  "function badgeNFT() external view returns (address)"
+  "function badgeNFT() external view returns (address)",
+  "function isRegistered(address user) external view returns (bool)",
+  "function registerWallet(address wallet) external"
 ];
 
-// Add this helper function at the top of the file
-async function verifyContractState(provider, contractAddress, userAddress) {
-  const quizManager = new ethers.Contract(
-    contractAddress,
-    QUIZ_MANAGER_ABI,
-    provider
-  );
-
-  console.log('Verifying contract state...');
-
+// Add this debug function at the top after imports
+async function checkWalletRegistration(provider, contractAddress, userAddress) {
   try {
-    const owner = await quizManager.owner();
-    console.log('Contract owner:', owner);
+    const quizManager = new ethers.Contract(
+      contractAddress,
+      QUIZ_MANAGER_ABI,
+      provider
+    );
 
-    const token = await quizManager.token();
-    console.log('Token contract:', token);
-
-    const badgeNFT = await quizManager.badgeNFT();
-    console.log('Badge NFT contract:', badgeNFT);
-
-    // Check if user is registered
-    const registeredWallet = await quizManager.getWalletAddress(userAddress);
-    console.log('Registered wallet for user:', registeredWallet);
-
-    if (registeredWallet.toLowerCase() !== userAddress.toLowerCase()) {
-      throw new Error('User wallet not properly registered');
+    console.log('\n=== Wallet Registration Check ===');
+    console.log('User address:', userAddress);
+    
+    const isRegistered = await quizManager.isRegistered(userAddress);
+    console.log('Is registered:', isRegistered);
+    
+    if (!isRegistered) {
+      return false;
     }
 
-    return true;
+    const registeredWallet = await quizManager.getWalletAddress(userAddress);
+    console.log('Registered wallet:', registeredWallet);
+    
+    return registeredWallet.toLowerCase() === userAddress.toLowerCase();
   } catch (error) {
-    console.error('Contract verification failed:', error);
+    console.error('Wallet registration check failed:', error);
     return false;
   }
 }
+
+// Add this helper function at the top of the file
+async function verifyContractState(provider, contractAddress, userAddress) {
+  try {
+    console.log('\n=== Contract Verification Debug ===');
+    console.log('Starting contract verification...');
+    console.log('Contract address:', contractAddress);
+    console.log('User address:', userAddress);
+
+    const quizManager = new ethers.Contract(
+      contractAddress,
+      QUIZ_MANAGER_ABI,
+      provider
+    );
+
+    // Add this check
+    const isRegistered = await quizManager.isRegistered(userAddress);
+    console.log('Is wallet registered?', isRegistered);
+
+    // Check registration status
+    const registeredWallet = await quizManager.getWalletAddress(userAddress);
+    console.log('Registered wallet address:', registeredWallet);
+    console.log('Expected wallet address:', userAddress);
+    console.log('Match?', registeredWallet.toLowerCase() === userAddress.toLowerCase());
+    console.log('================================\n');
+
+    // Verify contract exists
+    const code = await provider.getCode(contractAddress);
+    if (code === '0x') {
+      throw new Error('Contract not deployed at specified address');
+    }
+
+    console.log('Verifying contract state...');
+
+    // Check contract owner
+    const owner = await quizManager.owner();
+    console.log('Contract owner:', owner);
+
+    // Check token contract
+    const token = await quizManager.token();
+    console.log('Token contract:', token);
+
+    // Check badge NFT contract
+    const badgeNFT = await quizManager.badgeNFT();
+    console.log('Badge NFT contract:', badgeNFT);
+
+    // Additional validation
+    if (!registeredWallet || registeredWallet === '0x0000000000000000000000000000000000000000') {
+      throw new Error('User wallet not registered in contract');
+    }
+
+    if (registeredWallet.toLowerCase() !== userAddress.toLowerCase()) {
+      throw new Error(`Wallet mismatch. Registered: ${registeredWallet}, User: ${userAddress}`);
+    }
+
+    console.log('Contract verification successful');
+    return true;
+
+  } catch (error) {
+    console.error('Contract verification failed:', {
+      error: error.message,
+      code: error.code,
+      reason: error.reason,
+      wallet: userAddress
+    });
+    return false;
+  }
+}
+
+// Add this function to verify environment variables
+const verifyEnvironment = () => {
+  const required = [
+    'BASE_SEPOLIA_RPC_URL',
+    'SIMBIQUIZMANAGER_CA',
+    'PRIVATE_KEY',
+    'SIMBI_CONTRACT_ADDRESS'
+  ];
+
+  const missing = required.filter(key => !process.env[key]);
+  if (missing.length > 0) {
+    throw new Error(`Missing environment variables: ${missing.join(', ')}`);
+  }
+};
 
 // Path to users.json file
 const USERS_FILE_PATH = path.join(process.cwd(), 'users.json');
@@ -73,20 +158,36 @@ console.log('Environment Variables Debug:');
 console.log('BASE_SEPOLIA_RPC_URL:', process.env.BASE_SEPOLIA_RPC_URL);
 console.log('SIMBIQUIZMANAGER_CA:', process.env.SIMBIQUIZMANAGER_CA);
 
-// Load users data from file
+// Update the loadUsers function
 async function loadUsers() {
   try {
     console.log('Attempting to load users from:', USERS_FILE_PATH);
     const data = await fs.readFile(USERS_FILE_PATH, 'utf8');
+    
+    // Handle empty file case
+    if (!data.trim()) {
+      console.log('users.json is empty, initializing with empty object');
+      await fs.writeFile(USERS_FILE_PATH, '{}');
+      return {};
+    }
+
     const users = JSON.parse(data);
     console.log('Successfully loaded users:', users);
     return users;
   } catch (error) {
     if (error.code === 'ENOENT') {
-      console.error('users.json file not found at:', USERS_FILE_PATH);
-    } else {
-      console.error('Error loading users:', error);
+      console.log('users.json not found, creating new file');
+      await fs.writeFile(USERS_FILE_PATH, '{}');
+      return {};
     }
+    
+    if (error instanceof SyntaxError) {
+      console.log('Invalid JSON in users.json, resetting file');
+      await fs.writeFile(USERS_FILE_PATH, '{}');
+      return {};
+    }
+    
+    console.error('Error loading users:', error);
     return {};
   }
 }
@@ -123,21 +224,38 @@ const handleQuizCommand = (bot, users, chatId) => {
     });
 };
 
+// Update the handleQuizCallback function
 const handleQuizCallback = async (bot, users, chatId, data) => {
   try {
     const currentUsers = await loadUsers();
+    console.log('\n=== Quiz Start Debug ===');
     console.log('Current users data:', currentUsers);
-    console.log('Looking for chatId:', chatId);
-    console.log('User wallet:', currentUsers[chatId]?.address);
+    console.log('Chat ID:', chatId);
 
-    // Check if user exists and has a wallet
-    if (!currentUsers[chatId] || !currentUsers[chatId].address) {
-      console.log('No wallet found for user:', chatId);
-      bot.sendMessage(chatId, '❌ You need to register a wallet first! Use /start to create one.');
+    if (!currentUsers[chatId]) {
+      console.log('No user data found');
+      bot.sendMessage(chatId, '❌ Please use /start first to create your wallet.');
       return;
     }
 
-    // Update users object with loaded data
+    const userAddress = currentUsers[chatId].address;
+    console.log('User wallet address:', userAddress);
+
+    // Check wallet registration
+    const provider = new ethers.JsonRpcProvider(process.env.BASE_SEPOLIA_RPC_URL);
+    const isRegistered = await checkWalletRegistration(
+      provider,
+      process.env.SIMBIQUIZMANAGER_CA,
+      userAddress
+    );
+
+    if (!isRegistered) {
+      console.log('Wallet not registered, initiating registration...');
+      await handleReregister(bot, chatId);
+      return;
+    }
+
+    // Continue with quiz if wallet is registered
     users[chatId] = {
       ...currentUsers[chatId],
       score: 0,
@@ -195,7 +313,10 @@ const handleQuizCallback = async (bot, users, chatId, data) => {
     });
   } catch (error) {
     console.error('Error in handleQuizCallback:', error);
-    bot.sendMessage(chatId, '❌ An error occurred while processing your request. Please try again later.');
+    bot.sendMessage(
+      chatId,
+      '❌ An error occurred. Please try using /start to create a new wallet.'
+    );
   }
 };
 
@@ -241,9 +362,7 @@ const progressToNextQuestion = async (bot, users, chatId, category, quizzes) => 
       const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
 
       // Verify environment variables
-      if (!SIMBIQUIZMANAGER_CA || !PRIVATE_KEY || !BASE_SEPOLIA_RPC_URL) {
-        throw new Error('Missing required environment variables');
-      }
+      verifyEnvironment();
 
       const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
       const userAddress = users[chatId]?.address;
@@ -257,86 +376,26 @@ const progressToNextQuestion = async (bot, users, chatId, category, quizzes) => 
       const balance = await provider.getBalance(userAddress);
       console.log(`User wallet balance: ${balance.toString()}`);
       
-      if (balance === BigInt(0)) {
-        bot.sendMessage(
-          chatId,
-          '⚠️ Your wallet needs Base Sepolia ETH for gas fees.\n' +
-          'Get test ETH from: https://sepoliafaucet.com/\n' +
-          'Then try another quiz!'
         );
         return;
       }
 
-      // Add this check before sending the transaction
+      // Verify contract state with detailed error handling
+      console.log('Verifying contract state before transaction...');
       const isContractValid = await verifyContractState(provider, SIMBIQUIZMANAGER_CA, userAddress);
+      
       if (!isContractValid) {
-        throw new Error('Contract verification failed');
-      }
-
-      try {
-        // Initialize contract with proper ABI and signer
-        const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
+        const users = await loadUsers();
+        const userData = users[chatId];
+        console.log('Current user data:', userData);
         
-        console.log('Initializing contract interaction...');
-        console.log('Contract address:', SIMBIQUIZMANAGER_CA);
-        console.log('User address:', userAddress);
-        console.log('Bot wallet address:', wallet.address);
-
-        // Create interface for function encoding
-        const quizManagerInterface = new ethers.Interface(QUIZ_MANAGER_ABI);
-        
-        // Encode the function call
-        const data = quizManagerInterface.encodeFunctionData("completeQuiz", [
-          userAddress,
-          finalScore * 10
-        ]);
-        
-        console.log('Encoded transaction data:', data);
-
-        // Create and send the transaction
-        const tx = await wallet.sendTransaction({
-          to: SIMBIQUIZMANAGER_CA,
-          data: data,
-          gasLimit: 500000
-        });
-
-        console.log('Transaction hash:', tx.hash);
-        
-        await bot.sendMessage(
-          chatId,
-          `🎉 Quiz Complete!\n` +
-          `Your final score: ${finalScore}/${totalQuestions}\n\n` +
-          `🎁 Processing ${finalScore * 10} SIMBI tokens...\n` +
-          `Transaction: https://sepolia.basescan.org/tx/${tx.hash}\n\n` +
-          `Use /menu to return to main menu`
+        throw new Error(
+          'Contract verification failed. Please ensure your wallet is properly registered.\n' +
+          'Try using /start to re-register your wallet.'
         );
-
-        // Wait for confirmation with timeout
-        const receipt = await Promise.race([
-          tx.wait(1),
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Transaction timeout')), 60000)
-          )
-        ]);
-
-        if (receipt.status === 1) {
-          await bot.sendMessage(
-            chatId,
-            `✅ Tokens sent successfully!\n` +
-            `Received: ${finalScore * 10} SIMBI\n` +
-            `View: https://sepolia.basescan.org/tx/${receipt.hash}`
-          );
-        } else {
-          throw new Error('Transaction failed');
-        }
-
-      } catch (error) {
-        console.error('Contract interaction error:', error);
-        
-        // More detailed error message
-        const errorMessage = error.reason || error.message || 'Unknown error';
-        throw new Error(`Transaction failed: ${errorMessage} (${error.code || 'NO_CODE'})`);
       }
+
+      await handleTokenReward(bot, chatId, userAddress, finalScore);
 
     } catch (error) {
       console.error('Token reward error:', error);
@@ -374,4 +433,77 @@ const progressToNextQuestion = async (bot, users, chatId, category, quizzes) => 
   });
 };
 
-module.exports = { handleQuizCommand, handleQuizCallback, handleAnswerCallback };
+const handleTokenReward = async (bot, chatId, userAddress, finalScore) => {
+  try {
+    verifyEnvironment();
+
+    const provider = new ethers.JsonRpcProvider(process.env.BASE_SEPOLIA_RPC_URL);
+    const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+    
+    console.log('Setting up contract interaction...');
+    console.log('User address:', userAddress);
+    console.log('Bot wallet:', wallet.address);
+
+    const quizManager = new ethers.Contract(
+      process.env.SIMBIQUIZMANAGER_CA,
+      QUIZ_MANAGER_ABI,
+      wallet
+    );
+
+    console.log('Sending completeQuiz transaction...');
+    const tx = await quizManager.completeQuiz(userAddress, finalScore * 10, {
+      gasLimit: 500000
+    });
+
+    console.log('Transaction sent:', tx.hash);
+    await bot.sendMessage(
+      chatId,
+      `🎉 Processing reward...\nTransaction: https://sepolia.basescan.org/tx/${tx.hash}`
+    );
+
+    const receipt = await tx.wait();
+    console.log('Transaction confirmed:', receipt);
+
+    if (receipt.status === 1) {
+      await bot.sendMessage(
+        chatId,
+        `✅ Reward sent successfully!\nReceived: ${finalScore * 10} SIMBI`
+      );
+    } else {
+      throw new Error('Transaction failed');
+    }
+  } catch (error) {
+    console.error('Reward error:', error);
+    throw error;
+  }
+};
+
+const handleReregister = async (bot, chatId) => {
+  try {
+    const users = await loadUsers();
+    const userWallet = users[chatId]?.address;
+    
+    if (!userWallet) {
+      bot.sendMessage(chatId, '❌ No wallet found. Please use /start first.');
+      return;
+    }
+
+    const provider = new ethers.JsonRpcProvider(process.env.BASE_SEPOLIA_RPC_URL);
+    const quizManager = new ethers.Contract(
+      process.env.SIMBIQUIZMANAGER_CA,
+      ["function registerWallet(address wallet) external"],
+      new ethers.Wallet(process.env.PRIVATE_KEY, provider)
+    );
+
+    const tx = await quizManager.registerWallet(userWallet);
+    await tx.wait();
+
+    bot.sendMessage(chatId, '✅ Wallet re-registered successfully!');
+  } catch (error) {
+    console.error('Re-registration failed:', error);
+    bot.sendMessage(chatId, '❌ Failed to re-register wallet. Please try again.');
+  }
+}
+
+// At the bottom of the file
+export { handleQuizCommand, handleQuizCallback, handleReregister handleAnswerCallback };
