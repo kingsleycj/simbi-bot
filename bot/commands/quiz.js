@@ -431,7 +431,7 @@ const progressToNextQuestion = async (bot, users, chatId, category, quizzes) => 
   ).catch((error) => {
     console.error('Error sending next question:', error);
   });
-};
+}
 
 const handleTokenReward = async (bot, chatId, userAddress, finalScore) => {
   try {
@@ -506,4 +506,4 @@ const handleReregister = async (bot, chatId) => {
 }
 
 // At the bottom of the file
-export { handleQuizCommand, handleQuizCallback, handleReregister handleAnswerCallback };
+export { handleQuizCommand, handleQuizCallback, handleAnswerCallback };
