@@ -1,6 +1,6 @@
 // This module handles the /connect command for connecting a custom wallet to the bot.
 // It uses the ethers.js library to validate the private key and create a wallet instance.
-const { ethers } = require('ethers');
+import { ethers } from 'ethers';
 
 const handleConnectCommand = (bot, users, chatId, saveUsers) => {
   bot.sendMessage(chatId, '🔗 Please enter your custom wallet private key to connect:', { reply_markup: { force_reply: true } })
@@ -26,4 +26,4 @@ const handleConnectCommand = (bot, users, chatId, saveUsers) => {
     .catch((error) => console.error('Error handling /connect command:', error));
 };
 
-module.exports = { handleConnectCommand };
+export { handleConnectCommand };

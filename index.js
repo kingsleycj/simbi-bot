@@ -16,11 +16,16 @@ const __dirname = dirname(__filename);
 // Import commands
 import { handleStartCommand } from './bot/commands/start.js';
 import { handleMenuCommand } from './bot/commands/menu.js';
-import { handleQuizCommand } from './bot/commands/quiz.js';
+import { handleQuizCommand, handleQuizCallback, handleAnswerCallback } from './bot/commands/quiz.js';
 import { handleSyncCommand } from './bot/commands/sync.js';
 import { handleConnectCommand } from './bot/commands/connect.js';
 import { handleSetReminderCommand } from './bot/commands/reminder.js';
 import { handleTrackProgressCommand, handleAchievementNFTs } from './bot/commands/trackProgress.js';
+import { handleWalletInfo } from './bot/commands/wallet.js';
+import { handleProfileInfo } from './bot/commands/profile.js';
+// import { handleHelpCommand } from './bot/commands/help.js';
+import { handleMotivation } from './bot/commands/motivation.js';
+import { handleHumor } from './bot/commands/humor.js';
 
 // Debug environment variables
 console.log('Environment Variables:');
@@ -71,16 +76,20 @@ bot.setWebHook(`${WEBHOOK_URL}${webhookPath}`)
 // === Load or Initialize User Database ===
 let users = {};
 
-if (fs.existsSync(USERS_DB_FILE)) {
-  const data = fs.readFileSync(USERS_DB_FILE);
+try {
+  const data = await fs.readFile(USERS_DB_FILE, 'utf8');
   users = JSON.parse(data);
-} else {
-  fs.writeFileSync(USERS_DB_FILE, JSON.stringify(users, null, 2));
+} catch (error) {
+  if (error.code === 'ENOENT') {
+    await fs.writeFile(USERS_DB_FILE, JSON.stringify(users, null, 2));
+  } else {
+    console.error('Error loading users:', error);
+  }
 }
 
 // === Save Users Function ===
-function saveUsers() {
-  fs.writeFileSync(USERS_DB_FILE, JSON.stringify(users, null, 2));
+async function saveUsers() {
+  await fs.writeFile(USERS_DB_FILE, JSON.stringify(users, null, 2));
 }
 
 // Update command handlers
@@ -114,45 +123,36 @@ bot.on('callback_query', (query) => {
   try {
     if (data === 'quiz') {
       console.log('Triggering handleQuizCommand...');
-      const { handleQuizCommand } = require('./bot/commands/quiz.js');
-      handleQuizCommand(bot, users, chatId); // Trigger category selection
+      handleQuizCommand(bot, users, chatId);
     } else if (data.startsWith('quiz_')) {
       console.log('Triggering handleQuizCallback...');
-      const { handleQuizCallback } = require('./bot/commands/quiz.js');
       handleQuizCallback(bot, users, chatId, data);
     } else if (data.startsWith('answer_')) {
       console.log('Triggering handleAnswerCallback...');
-      const { handleAnswerCallback } = require('./bot/commands/quiz.js');
       handleAnswerCallback(bot, users, chatId, data);
     } else if (data === 'wallet') {
       console.log('Triggering handleWalletInfo...');
-      const { handleWalletInfo } = require('./bot/commands/wallet.js');
-      handleWalletInfo(bot, chatId); // Handle wallet info
+      handleWalletInfo(bot, chatId);
     } else if (data === 'profile') {
       console.log('Triggering handleProfileInfo...');
-      const { handleProfileInfo } = require('./bot/commands/profile.js');
       handleProfileInfo(bot, chatId); // Handle profile info
     } else if (data === 'help') {
       console.log('Triggering handleHelpCommand...');
-      const { handleHelpCommand } = require('./bot/commands/help.js');
       handleHelpCommand(bot, chatId); // Handle help command
     } else if (data === 'reminder') {
       console.log('Triggering handleSetReminderCommand...');
-      const { handleSetReminderCommand } = require('./bot/commands/reminder.js');
       handleSetReminderCommand(bot, chatId); // Handle reminder
     } else if (data === 'progress') {
       console.log('Triggering handleTrackProgressCommand...');
-      const { handleTrackProgressCommand } = require('./bot/commands/trackProgress.js');
       handleTrackProgressCommand(bot, users, chatId);
     } else if (data === 'achievements') {
       console.log('Triggering handleAchievementNFTs...');
-      const { handleAchievementNFTs } = require('./bot/commands/trackProgress.js');
       handleAchievementNFTs(bot, users, chatId);
     } else if (data === 'motivation') {
-      const { handleMotivation } = require('./bot/commands/motivation.js');
+      console.log('Triggering handleMotivation...');
       handleMotivation(bot, chatId);
     } else if (data === 'humor') {
-      const { handleHumor } = require('./bot/commands/humor.js');
+      console.log('Triggering handleHumor...');
       handleHumor(bot, chatId);
     } else {
       console.log('Unknown action received:', data);

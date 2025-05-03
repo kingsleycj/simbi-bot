@@ -5,4 +5,4 @@ const handleProfileInfo = (bot, chatId) => {
     });
 };
 
-module.exports = { handleProfileInfo };
+export { handleProfileInfo };

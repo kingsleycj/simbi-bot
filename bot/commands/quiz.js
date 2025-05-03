@@ -5,12 +5,17 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import dotenv from 'dotenv';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const quizData = require('../../utils/quizQuestions.json');
+
+// Initialize dotenv
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-require('dotenv').config();
-const quizData = require('../../utils/quizQuestions.json');
 
 // Update QUIZ_MANAGER_ABI to include registerWallet
 const QUIZ_MANAGER_ABI = [
@@ -376,6 +381,12 @@ const progressToNextQuestion = async (bot, users, chatId, category, quizzes) => 
       const balance = await provider.getBalance(userAddress);
       console.log(`User wallet balance: ${balance.toString()}`);
       
+      if (balance === BigInt(0)) {
+        bot.sendMessage(
+          chatId,
+          '⚠️ Your wallet needs Base Sepolia ETH for gas fees.\n' +
+          'Get test ETH from: https://sepoliafaucet.com/\n' +
+          'Then try another quiz!'
         );
         return;
       }
@@ -506,4 +517,9 @@ const handleReregister = async (bot, chatId) => {
 }
 
 // At the bottom of the file
-export { handleQuizCommand, handleQuizCallback, handleAnswerCallback };
+export { 
+  handleQuizCommand, 
+  handleQuizCallback, 
+  handleAnswerCallback, 
+  handleReregister 
+};

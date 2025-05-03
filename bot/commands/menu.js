@@ -31,4 +31,4 @@ const handleMenuCommand = (bot, chatId) => {
     .catch(error => console.error('Error sending menu:', error));
 };
 
-module.exports = { handleMenuCommand };
+export { handleMenuCommand };

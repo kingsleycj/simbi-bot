@@ -1,6 +1,6 @@
 // This module handles the reminder command for the SIMBI bot.
 // It allows users to set reminders for study sessions and sends notifications at the specified time.
-const schedule = require('node-schedule');
+import schedule from 'node-schedule';
 
 const reminders = {}; // Store reminders for each user
 
@@ -33,4 +33,4 @@ const handleSetReminderCommand = (bot, chatId) => {
     .catch((error) => console.error('Error handling reminder command:', error));
 };
 
-module.exports = { handleSetReminderCommand, reminders };
+export { handleSetReminderCommand, reminders };

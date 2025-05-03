@@ -1,7 +1,5 @@
-// This module handles the /start command for a Telegram bot.
-// It creates a new SIMBI wallet for the user if they don't have one, or sends a welcome back message if they do.
-const { ethers } = require('ethers');
-const fs = require('fs');
+import { ethers } from 'ethers';
+import { promises as fs } from 'fs';
 
 const registerWallet = async (address) => {
   try {
@@ -65,4 +63,4 @@ Use /menu to explore all features.`, { parse_mode: 'Markdown' })
   }
 };
 
-module.exports = { handleStartCommand };
+export { handleStartCommand };

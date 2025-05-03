@@ -1,7 +1,8 @@
-const hre = require("hardhat");
+import { ethers } from 'hardhat';
+import hre from 'hardhat';
 
 async function main() {
-    const [deployer] = await hre.ethers.getSigners();
+    const [deployer] = await ethers.getSigners();
     console.log("Deploying contracts with the account:", deployer.address);
 
     // Token image URI

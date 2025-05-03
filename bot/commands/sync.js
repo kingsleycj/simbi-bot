@@ -19,4 +19,4 @@ const handleSyncCommand = (bot, users, chatId, saveUsers) => {
     .catch((error) => console.error('Error handling /sync command:', error));
 };
 
-module.exports = { handleSyncCommand };
+export { handleSyncCommand };

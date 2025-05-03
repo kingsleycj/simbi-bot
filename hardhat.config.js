@@ -1,12 +1,10 @@
-require("@nomicfoundation/hardhat-toolbox");
-require("dotenv").config();
+import { HardhatUserConfig } from "hardhat/config";
+import "@nomicfoundation/hardhat-toolbox";
+import dotenv from "dotenv";
 
-/** @type import('hardhat/config').HardhatUserConfig */
-// require("@nomicfoundation/hardhat-toolbox");
-// require("@nomiclabs/hardhat-ethers");
-// require("@nomiclabs/hardhat-etherscan");
+dotenv.config();
 
-module.exports = {
+const HardhatUserConfig = {
     solidity: "0.8.20",
     networks: {
         baseSepolia: {
@@ -28,3 +26,5 @@ module.exports = {
         ],
     },
 };
+
+export {HardhatUserConfig};

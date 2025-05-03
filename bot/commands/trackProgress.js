@@ -1,7 +1,9 @@
 // Description: This module handles the /trackProgress command and fetches on-chain progress and achievement NFTs for a user.
 // It uses the ethers.js library to interact with Ethereum smart contracts and fetch user data.
-require('dotenv').config();
-const { ethers, JsonRpcProvider } = require('ethers');
+import { ethers } from 'ethers';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 console.log('Environment Variables Debug:');
 console.log('BASE_SEPOLIA_RPC_URL:', process.env.BASE_SEPOLIA_RPC_URL);
@@ -27,7 +29,7 @@ const handleTrackProgressCommand = (bot, users, chatId) => {
 
   console.log('Using SIMBIBADGE_NFT_CA:', SIMBIBADGE_NFT_CA);
 
-  const provider = new JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
+  const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
   const simbiToken = new ethers.Contract(
     SIMBI_CONTRACT_ADDRESS,
     ["function balanceOf(address account) view returns (uint256)"],
@@ -79,7 +81,7 @@ const handleAchievementNFTs = (bot, users, chatId) => {
 
   console.log('Using SIMBIBADGE_NFT_CA:', SIMBIBADGE_NFT_CA);
 
-  const provider = new JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
+  const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
   const simbiBadgeNFT = new ethers.Contract(
     SIMBIBADGE_NFT_CA,
     ["function getAttemptCounts(address user) view returns (uint256, uint256, uint256)"],
@@ -96,4 +98,4 @@ const handleAchievementNFTs = (bot, users, chatId) => {
     });
 };
 
-module.exports = { handleTrackProgressCommand, handleAchievementNFTs };
+export { handleTrackProgressCommand, handleAchievementNFTs };

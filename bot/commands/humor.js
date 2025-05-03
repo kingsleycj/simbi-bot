@@ -12,4 +12,4 @@ const handleHumor = (bot, chatId) => {
     });
 };
 
-module.exports = { handleHumor };
+export { handleHumor };
