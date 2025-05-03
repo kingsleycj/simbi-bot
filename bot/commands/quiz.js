@@ -17,7 +17,7 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Update QUIZ_MANAGER_ABI to include registerWallet
+// Update QUIZ_MANAGER_ABI to ensure it matches the contract
 const QUIZ_MANAGER_ABI = [
   "function completeQuiz(address user, uint256 score) external",
   "function getWalletAddress(address user) external view returns (address)",
@@ -25,7 +25,9 @@ const QUIZ_MANAGER_ABI = [
   "function token() external view returns (address)",
   "function badgeNFT() external view returns (address)",
   "function isRegistered(address user) external view returns (bool)",
-  "function registerWallet(address wallet) external"
+  "function registerWallet(address wallet) external",
+  "function completedQuizzes(address) external view returns (uint256)",
+  "function credentialIssued(address) external view returns (bool)"
 ];
 
 // Add this debug function at the top after imports
@@ -38,21 +40,30 @@ async function checkWalletRegistration(provider, contractAddress, userAddress) {
     );
 
     console.log('\n=== Wallet Registration Check ===');
-    console.log('User address:', userAddress);
-    
-    const isRegistered = await quizManager.isRegistered(userAddress);
-    console.log('Is registered:', isRegistered);
-    
-    if (!isRegistered) {
-      return false;
+    console.log('Contract:', contractAddress);
+    console.log('User:', userAddress);
+
+    // First verify contract exists
+    const code = await provider.getCode(contractAddress);
+    if (code === '0x') {
+      throw new Error('Contract not deployed at specified address');
     }
 
-    const registeredWallet = await quizManager.getWalletAddress(userAddress);
-    console.log('Registered wallet:', registeredWallet);
-    
-    return registeredWallet.toLowerCase() === userAddress.toLowerCase();
+    // Check owner to verify contract
+    const owner = await quizManager.owner();
+    console.log('Contract owner:', owner);
+
+    // Check if wallet is registered
+    const isRegistered = await quizManager.isRegistered(userAddress);
+    console.log('Is registered:', isRegistered);
+
+    return isRegistered;
   } catch (error) {
-    console.error('Wallet registration check failed:', error);
+    console.error('Wallet registration check failed:', {
+      message: error.message,
+      code: error.code,
+      transaction: error.transaction
+    });
     return false;
   }
 }
@@ -377,20 +388,6 @@ const progressToNextQuestion = async (bot, users, chatId, category, quizzes) => 
         throw new Error('No wallet address found. Use /start to create one.');
       }
 
-      // Check user's Base Sepolia ETH balance
-      const balance = await provider.getBalance(userAddress);
-      console.log(`User wallet balance: ${balance.toString()}`);
-      
-      if (balance === BigInt(0)) {
-        bot.sendMessage(
-          chatId,
-          '⚠️ Your wallet needs Base Sepolia ETH for gas fees.\n' +
-          'Get test ETH from: https://sepoliafaucet.com/\n' +
-          'Then try another quiz!'
-        );
-        return;
-      }
-
       // Verify contract state with detailed error handling
       console.log('Verifying contract state before transaction...');
       const isContractValid = await verifyContractState(provider, SIMBIQUIZMANAGER_CA, userAddress);
@@ -444,41 +441,52 @@ const progressToNextQuestion = async (bot, users, chatId, category, quizzes) => 
   });
 }
 
+// Update the handleTokenReward function to have bot pay gas
 const handleTokenReward = async (bot, chatId, userAddress, finalScore) => {
   try {
     verifyEnvironment();
 
     const provider = new ethers.JsonRpcProvider(process.env.BASE_SEPOLIA_RPC_URL);
-    const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+    const botWallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
     
     console.log('Setting up contract interaction...');
     console.log('User address:', userAddress);
-    console.log('Bot wallet:', wallet.address);
+    console.log('Bot wallet:', botWallet.address);
 
     const quizManager = new ethers.Contract(
       process.env.SIMBIQUIZMANAGER_CA,
       QUIZ_MANAGER_ABI,
-      wallet
+      botWallet  // Using bot's wallet as signer
     );
 
-    console.log('Sending completeQuiz transaction...');
-    const tx = await quizManager.completeQuiz(userAddress, finalScore * 10, {
-      gasLimit: 500000
-    });
+    // Remove balance check since bot pays gas
+    console.log('Sending completeQuiz transaction from bot wallet...');
+    const tx = await quizManager.completeQuiz(
+      userAddress,  // reward recipient 
+      finalScore * 10,  // reward amount
+      {
+        from: botWallet.address,  // explicitly set sender
+        gasLimit: 500000,
+        maxFeePerGas: ethers.parseUnits('1.5', 'gwei'),
+        maxPriorityFeePerGas: ethers.parseUnits('1.5', 'gwei')
+      }
+    );
 
     console.log('Transaction sent:', tx.hash);
     await bot.sendMessage(
       chatId,
-      `🎉 Processing reward...\nTransaction: https://sepolia.basescan.org/tx/${tx.hash}`
+      `🎉 Quiz Complete!\nProcessing ${finalScore * 10} SIMBI tokens...\n` +
+      `Transaction: https://sepolia.basescan.org/tx/${tx.hash}`
     );
 
     const receipt = await tx.wait();
-    console.log('Transaction confirmed:', receipt);
-
+    
     if (receipt.status === 1) {
       await bot.sendMessage(
         chatId,
-        `✅ Reward sent successfully!\nReceived: ${finalScore * 10} SIMBI`
+        `✅ Congratulations!\n` +
+        `You earned: ${finalScore * 10} SIMBI tokens\n` +
+        `View transaction: https://sepolia.basescan.org/tx/${receipt.hash}`
       );
     } else {
       throw new Error('Transaction failed');
@@ -489,6 +497,7 @@ const handleTokenReward = async (bot, chatId, userAddress, finalScore) => {
   }
 };
 
+// Update the handleReregister function
 const handleReregister = async (bot, chatId) => {
   try {
     const users = await loadUsers();
@@ -500,21 +509,57 @@ const handleReregister = async (bot, chatId) => {
     }
 
     const provider = new ethers.JsonRpcProvider(process.env.BASE_SEPOLIA_RPC_URL);
+    
+    // Add debug logs
+    console.log('Debug Registration:');
+    console.log('RPC URL:', process.env.BASE_SEPOLIA_RPC_URL);
+    console.log('Contract Address:', process.env.SIMBIQUIZMANAGER_CA);
+    console.log('User Wallet:', userWallet);
+    console.log('Bot Wallet:', new ethers.Wallet(process.env.PRIVATE_KEY).address);
+
+    const signer = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
     const quizManager = new ethers.Contract(
       process.env.SIMBIQUIZMANAGER_CA,
-      ["function registerWallet(address wallet) external"],
-      new ethers.Wallet(process.env.PRIVATE_KEY, provider)
+      QUIZ_MANAGER_ABI,
+      signer
     );
 
-    const tx = await quizManager.registerWallet(userWallet);
-    await tx.wait();
+    // Add gas settings and value explicitly
+    const tx = await quizManager.registerWallet(userWallet, {
+      gasLimit: 500000,
+      maxFeePerGas: ethers.parseUnits('1.5', 'gwei'),
+      maxPriorityFeePerGas: ethers.parseUnits('1.5', 'gwei')
+    });
 
-    bot.sendMessage(chatId, '✅ Wallet re-registered successfully!');
+    console.log('Registration tx sent:', tx.hash);
+    
+    // Wait for confirmation
+    const receipt = await tx.wait();
+    console.log('Registration confirmed:', receipt);
+
+    if (receipt.status === 1) {
+      await bot.sendMessage(chatId, '✅ Wallet registered successfully! Try /quiz again.');
+    } else {
+      throw new Error('Transaction failed');
+    }
   } catch (error) {
-    console.error('Re-registration failed:', error);
-    bot.sendMessage(chatId, '❌ Failed to re-register wallet. Please try again.');
+    console.error('Registration error details:', {
+      message: error.message,
+      code: error.code,
+      reason: error.reason,
+      transaction: error.transaction
+    });
+
+    await bot.sendMessage(
+      chatId, 
+      '❌ Failed to register wallet.\n' +
+      'Please ensure:\n' +
+      '1. Your wallet has Base Sepolia ETH\n' +
+      '2. The contract is deployed correctly\n' +
+      'Try /start again or contact support.'
+    );
   }
-}
+};
 
 // At the bottom of the file
 export { 
