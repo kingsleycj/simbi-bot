@@ -11,6 +11,13 @@ contract SimbiToken is ERC20, Ownable {
     
     uint256 private _userMinted;
     string private _tokenImageURI;
+
+    // Add minter role tracking
+    mapping(address => bool) public minters;
+    
+    // Add minter events
+    event MinterAdded(address indexed account);
+    event MinterRemoved(address indexed account);
     
     constructor(string memory tokenImageURI) ERC20("Simbi Token", "SIMBI") Ownable(msg.sender) {
         _tokenImageURI = tokenImageURI;
@@ -19,7 +26,9 @@ contract SimbiToken is ERC20, Ownable {
         _mint(msg.sender, CREATOR_SUPPLY);
     }
 
-    function mintToUser(address to, uint256 amount) public onlyOwner {
+    // Update mintToUser to allow minters
+    function mintToUser(address to, uint256 amount) public {
+        require(minters[msg.sender] || msg.sender == owner(), "Not authorized to mint");
         require(_userMinted + amount <= USER_SUPPLY_CAP, "Minting would exceed user supply cap");
         _userMinted += amount;
         _mint(to, amount);
@@ -41,5 +50,20 @@ contract SimbiToken is ERC20, Ownable {
     // Function to get token image URI
     function tokenImageURI() public view returns (string memory) {
         return _tokenImageURI;
+    }
+    
+    // Implement grantMinter function
+    function grantMinter(address quizManagerAddress) public onlyOwner {
+        require(quizManagerAddress != address(0), "Invalid address");
+        require(!minters[quizManagerAddress], "Already a minter");
+        minters[quizManagerAddress] = true;
+        emit MinterAdded(quizManagerAddress);
+    }
+
+    // Add revokeMinter function
+    function revokeMinter(address minter) public onlyOwner {
+        require(minters[minter], "Not a minter");
+        minters[minter] = false;
+        emit MinterRemoved(minter);
     }
 }

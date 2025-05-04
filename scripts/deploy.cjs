@@ -1,5 +1,25 @@
 const { ethers } = require("hardhat");
 
+async function setupTokenPermissions(simbiToken, quizManagerAddress) {
+  console.log('\n=== Setting up Token Permissions ===');
+  console.log('Granting minting rights to QuizManager:', quizManagerAddress);
+  
+  try {
+    // Grant minting rights to quiz manager
+    const tx = await simbiToken.grantMinter(quizManagerAddress);
+    await tx.wait();
+    
+    // Verify setup
+    const isMinter = await simbiToken.minters(quizManagerAddress);
+    console.log('Minting rights granted:', isMinter);
+    
+    return isMinter;
+  } catch (error) {
+    console.error('Failed to grant minting rights:', error);
+    throw error;
+  }
+}
+
 async function main() {
     try {
         // Initialize ethers
@@ -67,6 +87,14 @@ async function main() {
             simbiCredentialNFT.deploymentTransaction().wait(5),
             quizManager.deploymentTransaction().wait(5)
         ]);
+
+        // Setting up permissions
+        console.log("\nSetting up permissions...");
+        const success = await setupTokenPermissions(simbiToken, quizManagerAddress);
+        
+        if (!success) {
+            throw new Error('Failed to setup token permissions');
+        }
 
         // Verify contracts
         console.log("\nVerifying contracts...");

@@ -19,14 +19,18 @@ const __dirname = dirname(__filename);
 
 // Update QUIZ_MANAGER_ABI to ensure it matches the contract
 const QUIZ_MANAGER_ABI = [
-  "function completeQuiz(address user, uint256 score) external",
-  "function isRegistered(address) external view returns (bool)",
-  "function owner() external view returns (address)",
-  "function token() external view returns (address)",
-  "function registerWallet(address wallet) external",
-  "function reRegisterWallet(address wallet) external",
-  "function credentialIssued(address) external view returns (bool)",
-  "function completedQuizzes(address) external view returns (uint256)"
+    "function completeQuiz(address user, uint256 score) external",
+    "function isRegistered(address) external view returns (bool)",
+    "function token() external view returns (address)",
+    "function owner() external view returns (address)"
+];
+
+const TOKEN_ABI = [
+    "function mintToUser(address to, uint256 amount) public",
+    "function balanceOf(address account) view returns (uint256)",
+    "function totalSupply() view returns (uint256)",
+    "function USER_SUPPLY_CAP() view returns (uint256)",
+    "function minters(address) view returns (bool)"
 ];
 
 // Add this debug function at the top after imports
@@ -394,108 +398,86 @@ const progressToNextQuestion = async (bot, users, chatId, category, quizzes) => 
 
 // Update the handleTokenReward function
 const handleTokenReward = async (bot, chatId, userAddress, finalScore) => {
-  try {
-    console.log('\n=== Debug Token Reward ===');
-    console.log('Contract Address:', process.env.SIMBIQUIZMANAGER_CA);
-    console.log('User Address:', userAddress);
-    console.log('Score:', finalScore);
-    console.log('Bot Wallet:', process.env.PRIVATE_KEY ? `0x${ethers.computeAddress(`0x${process.env.PRIVATE_KEY}`)}` : 'Not available');
+    try {
+        console.log('\n=== Token Contract Debug ===');
+        const provider = new ethers.JsonRpcProvider(process.env.BASE_SEPOLIA_RPC_URL);
+        const botWallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
 
-    const provider = new ethers.JsonRpcProvider(process.env.BASE_SEPOLIA_RPC_URL);
-    const botWallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+        // First check QuizManager state
+        const quizManager = new ethers.Contract(
+            process.env.SIMBIQUIZMANAGER_CA,
+            QUIZ_MANAGER_ABI,
+            botWallet
+        );
 
-    // Get contract interface for proper function encoding
-    const quizManager = new ethers.Contract(
-      process.env.SIMBIQUIZMANAGER_CA,
-      QUIZ_MANAGER_ABI,
-      botWallet
-    );
+        // Get token address from QuizManager
+        const tokenAddress = await quizManager.token();
+        console.log('Token address from QuizManager:', tokenAddress);
+        console.log('Expected token address:', process.env.SIMBI_CONTRACT_ADDRESS);
 
-    // Check contract state
-    const owner = await quizManager.owner();
-    console.log('Contract owner:', owner);
-    console.log('Bot is owner:', owner.toLowerCase() === botWallet.address.toLowerCase());
+        // Verify token contract
+        const token = new ethers.Contract(
+            process.env.SIMBI_CONTRACT_ADDRESS,
+            TOKEN_ABI,
+            botWallet
+        );
 
-    // Get token contract address
-    const tokenAddress = await quizManager.token();
-    console.log('Token contract:', tokenAddress);
+        // Check minting rights
+        const isMinter = await token.minters(process.env.SIMBIQUIZMANAGER_CA);
+        console.log('QuizManager is minter:', isMinter);
 
-    // Check if user is registered
-    const isRegistered = await quizManager.isRegistered(userAddress);
-    console.log('User is registered:', isRegistered);
+        // Calculate reward amount
+        const rewardAmount = BigInt(finalScore * 10);
+        console.log('Reward amount:', rewardAmount.toString());
 
-    // Encode function data to debug call
-    const rewardAmount = BigInt(finalScore * 10);
-    const data = quizManager.interface.encodeFunctionData("completeQuiz", [userAddress, rewardAmount]);
-    console.log('Encoded transaction data:', data);
+        // Get current total supply
+        const totalSupply = await token.totalSupply();
+        const userSupplyCap = await token.USER_SUPPLY_CAP();
+        console.log('Current total supply:', ethers.formatEther(totalSupply));
+        console.log('User supply cap:', ethers.formatEther(userSupplyCap));
 
-    // Estimate gas before sending
-    const gasEstimate = await quizManager.completeQuiz.estimateGas(
-      userAddress,
-      rewardAmount
-    );
-    console.log('Estimated gas:', gasEstimate.toString());
+        // Send transaction with explicit parameters
+        const tx = await quizManager.completeQuiz(
+            userAddress,
+            rewardAmount,
+            {
+                gasLimit: 300000,
+                maxFeePerGas: ethers.parseUnits('1.5', 'gwei'),
+                maxPriorityFeePerGas: ethers.parseUnits('1.5', 'gwei')
+            }
+        );
 
-    // Send transaction with explicit parameters
-    console.log('Sending reward transaction...');
-    const tx = await quizManager.completeQuiz(
-      userAddress,
-      rewardAmount,
-      {
-        gasLimit: gasEstimate.mul(120).div(100), // Add 20% buffer
-        maxFeePerGas: ethers.parseUnits('1.5', 'gwei'),
-        maxPriorityFeePerGas: ethers.parseUnits('1.5', 'gwei'),
-        nonce: await provider.getTransactionCount(botWallet.address)
-      }
-    );
+        await bot.sendMessage(
+            chatId,
+            `🎮 Processing your quiz reward...\nTransaction: https://sepolia.basescan.org/tx/${tx.hash}`
+        );
 
-    console.log('Transaction hash:', tx.hash);
-    
-    await bot.sendMessage(
-      chatId,
-      `🎮 Processing your quiz reward...\nTransaction: https://sepolia.basescan.org/tx/${tx.hash}`
-    );
+        const receipt = await tx.wait();
+        
+        if (receipt.status === 1) {
+            const newBalance = await token.balanceOf(userAddress);
+            await bot.sendMessage(
+                chatId,
+                `✅ Quiz reward processed!\n` +
+                `You earned ${rewardAmount.toString()} SIMBI tokens\n` +
+                `Your new balance: ${ethers.formatEther(newBalance)} SIMBI\n` +
+                `View transaction: https://sepolia.basescan.org/tx/${receipt.hash}`
+            );
+        } else {
+            throw new Error('Transaction failed');
+        }
 
-    const receipt = await tx.wait();
-    console.log('Transaction receipt:', JSON.stringify(receipt, null, 2));
-
-    if (receipt.status === 1) {
-      await bot.sendMessage(
-        chatId,
-        `✅ Quiz reward processed!\nYou earned ${rewardAmount.toString()} SIMBI tokens\nView transaction: https://sepolia.basescan.org/tx/${receipt.hash}`
-      );
-    } else {
-      throw new Error('Transaction failed');
+    } catch (error) {
+        console.error('Reward Error:', {
+            message: error.message,
+            code: error.code,
+            reason: error.reason,
+            tx: error.transaction,
+            data: error.data,
+            receipt: error.receipt
+        });
+        throw error;
     }
-
-  } catch (error) {
-    console.error('Reward Error:', {
-      message: error.message,
-      code: error.code,
-      reason: error.reason,
-      tx: error.transaction,
-      data: error.data,
-      receipt: error.receipt
-    });
-
-    // Try to decode error if possible
-    if (error.data) {
-      try {
-        const decodedError = quizManager.interface.parseError(error.data);
-        console.error('Decoded error:', decodedError);
-      } catch (e) {
-        console.error('Could not decode error data');
-      }
-    }
-
-    await bot.sendMessage(
-      chatId,
-      '❌ Failed to process reward. Please contact support with this error code: ' +
-      `${error.code || 'UNKNOWN'}`
-    );
-    
-    throw error;
-  }
 };
 
 // Update the handleReregister function
