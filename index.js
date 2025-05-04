@@ -23,9 +23,9 @@ import { handleSetReminderCommand } from './bot/commands/reminder.js';
 import { handleTrackProgressCommand, handleAchievementNFTs } from './bot/commands/trackProgress.js';
 import { handleWalletInfo } from './bot/commands/wallet.js';
 import { handleProfileInfo } from './bot/commands/profile.js';
-// import { handleHelpCommand } from './bot/commands/help.js';
 import { handleMotivation } from './bot/commands/motivation.js';
 import { handleHumor } from './bot/commands/humor.js';
+// import { handleHelpCommand } from './bot/commands/help.js';
 
 // Debug environment variables
 console.log('Environment Variables:');
