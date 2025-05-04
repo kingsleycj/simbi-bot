@@ -16,13 +16,26 @@ async function main() {
     const isMinter = await token.minters(process.env.SIMBIQUIZMANAGER_CA);
     console.log('QuizManager is minter:', isMinter);
     
+    if (!isMinter) {
+        console.log('\nGranting minter permissions...');
+        const tx = await token.connect(owner).grantMinter(process.env.SIMBIQUIZMANAGER_CA);
+        await tx.wait();
+        console.log('Minter permissions granted!');
+        
+        // Verify
+        const newIsMinter = await token.minters(process.env.SIMBIQUIZMANAGER_CA);
+        console.log('QuizManager is now minter:', newIsMinter);
+    }
+    
     // Check token supply stats
     const totalSupply = await token.totalSupply();
     const userSupplyCap = await token.USER_SUPPLY_CAP();
+    const userMinted = await token.getUserMinted();
     
     console.log('\n=== Token Supply Stats ===');
     console.log('Total Supply:', hre.ethers.formatEther(totalSupply), 'SIMBI');
     console.log('User Supply Cap:', hre.ethers.formatEther(userSupplyCap), 'SIMBI');
+    console.log('User Minted:', hre.ethers.formatEther(userMinted), 'SIMBI');
     
   } catch (error) {
     console.error('Check failed:', error);
@@ -30,9 +43,7 @@ async function main() {
   }
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch(error => {
-    console.error(error);
-    process.exit(1);
-  });
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

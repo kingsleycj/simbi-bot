@@ -17,7 +17,7 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Update QUIZ_MANAGER_ABI to ensure it matches the contract
+// Update the ABIs at the top of the file
 const QUIZ_MANAGER_ABI = [
     "function completeQuiz(address user, uint256 score) external",
     "function isRegistered(address) external view returns (bool)",
@@ -25,20 +25,14 @@ const QUIZ_MANAGER_ABI = [
     "function owner() external view returns (address)",
     "function registerWallet(address wallet) external",
     "function reRegisterWallet(address wallet) external",
-    "function credentialIssued(address) external view returns (bool)",
-    "function completedQuizzes(address) external view returns (uint256)",
     "function rewardPerQuiz() external view returns (uint256)"
 ];
 
 const TOKEN_ABI = [
-    "function mintToUser(address to, uint256 amount) public",
-    "function balanceOf(address account) view returns (uint256)",
-    "function totalSupply() view returns (uint256)",
-    "function USER_SUPPLY_CAP() view returns (uint256)",
-    "function minters(address) view returns (bool)",
-    "function owner() view returns (address)",
-    "function cap() view returns (uint256)",
-    "function _userMinted() view returns (uint256)"
+    "function mintToUser(address to, uint256 amount) external",
+    "function balanceOf(address) external view returns (uint256)",
+    "function minters(address) external view returns (bool)",
+    "function owner() external view returns (address)"
 ];
 
 // Add this debug function at the top after imports
@@ -411,74 +405,115 @@ const handleTokenReward = async (bot, chatId, userAddress, finalScore) => {
         console.log('User:', userAddress);
         console.log('Score:', finalScore);
 
+        // Verify environment variables first
+        verifyEnvironment();
+
+        // Validate user address
+        if (!ethers.isAddress(userAddress)) {
+            throw new Error('Invalid user address format');
+        }
+
         const provider = new ethers.JsonRpcProvider(process.env.BASE_SEPOLIA_RPC_URL);
         const botWallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
 
-        // Create full ABI for better encoding
-        const quizManager = new ethers.Contract(
+        console.log('Bot Wallet Address:', botWallet.address);
+        console.log('Contract Address:', process.env.SIMBIQUIZMANAGER_CA);
+
+        // Check bot wallet balance
+        const botBalance = await provider.getBalance(botWallet.address);
+        console.log('Bot Wallet Balance:', ethers.formatEther(botBalance), 'ETH');
+        
+        const minRequiredBalance = ethers.parseEther('0.01'); // 0.01 ETH minimum
+        if (botBalance < minRequiredBalance) {
+            throw new Error('Bot wallet has insufficient ETH for gas fees');
+        }
+
+        // Initialize contract with signer
+        const quizManagerWithSigner = new ethers.Contract(
             process.env.SIMBIQUIZMANAGER_CA,
-            QUIZ_MANAGER_ABI, // Use the full ABI from top of file
+            QUIZ_MANAGER_ABI,
             botWallet
         );
 
-        // Debug contract state
-        console.log('\n=== Contract State ===');
-        const isRegistered = await quizManager.isRegistered(userAddress);
-        console.log('User registered:', isRegistered);
-        console.log('Quiz Manager:', process.env.SIMBIQUIZMANAGER_CA);
+        // Try to call the function directly
+        try {
+            console.log('Calling completeQuiz function...');
+            const tx = await quizManagerWithSigner.completeQuiz(
+                userAddress,
+                finalScore,
+                {
+                    gasLimit: 500000n,
+                    maxFeePerGas: ethers.parseUnits('1.5', 'gwei'),
+                    maxPriorityFeePerGas: ethers.parseUnits('1.5', 'gwei')
+                }
+            );
 
-        if (!isRegistered) {
-            throw new Error('User not registered');
-        }
+            console.log('Transaction sent:', tx.hash);
+            console.log('Transaction details:', {
+                to: tx.to,
+                from: tx.from,
+                data: tx.data,
+                gasLimit: tx.gasLimit?.toString(),
+                maxFeePerGas: tx.maxFeePerGas?.toString(),
+                maxPriorityFeePerGas: tx.maxPriorityFeePerGas?.toString()
+            });
 
-        // Calculate and validate reward
-        const rewardScore = ethers.toBigInt(finalScore);
-        console.log('Final Score:', rewardScore.toString());
-
-        // Encode function data for debugging
-        const encodedData = quizManager.interface.encodeFunctionData(
-            "completeQuiz",
-            [userAddress, rewardScore]
-        );
-        console.log('Encoded transaction data:', encodedData);
-
-        // Send transaction with explicit parameters
-        const tx = await quizManager.completeQuiz(
-            userAddress,
-            rewardScore,
-            {
-                gasLimit: 500000n,
-                maxFeePerGas: ethers.parseUnits('2', 'gwei'),
-                maxPriorityFeePerGas: ethers.parseUnits('1.5', 'gwei')
-            }
-        );
-
-        console.log('Transaction sent:', tx.hash);
-
-        await bot.sendMessage(
-            chatId,
-            `🎮 Processing reward...\n` +
-            `Score: ${finalScore}\n` +
-            `Transaction: https://sepolia.basescan.org/tx/${tx.hash}`
-        );
-
-        // Wait for confirmation with timeout
-        const receipt = await Promise.race([
-            tx.wait(1),
-            new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Transaction timeout')), 60000)
-            )
-        ]);
-
-        if (receipt.status === 1) {
             await bot.sendMessage(
                 chatId,
-                `✅ Quiz reward processed!\n` +
-                `Score: ${finalScore}\n` +
-                `Transaction: https://sepolia.basescan.org/tx/${receipt.hash}`
+                `🎮 Processing reward...\nTransaction: https://sepolia.basescan.org/tx/${tx.hash}`
             );
-        } else {
-            throw new Error('Transaction failed on-chain');
+
+            // Wait for transaction with timeout
+            console.log('Waiting for transaction confirmation...');
+            const receipt = await Promise.race([
+                tx.wait(1),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Transaction timeout')), 60000)
+                )
+            ]);
+
+            if (receipt.status === 1) {
+                // Verify token transfer
+                const newBalance = await token.balanceOf(userAddress);
+                const expectedBalance = initialBalance + rewardPerQuiz;
+                
+                if (newBalance < expectedBalance) {
+                    throw new Error('Token transfer verification failed');
+                }
+
+                await bot.sendMessage(
+                    chatId,
+                    `✅ Quiz completed successfully!\n\n` +
+                    `Score: ${finalScore}\n` +
+                    `Reward: ${ethers.formatEther(rewardPerQuiz)} SIMBI\n` +
+                    `New Balance: ${ethers.formatEther(newBalance)} SIMBI\n` +
+                    `Transaction: https://sepolia.basescan.org/tx/${receipt.hash}`
+                );
+            } else {
+                throw new Error('Transaction failed');
+            }
+        } catch (error) {
+            console.error('Transaction error:', {
+                message: error.message,
+                code: error.code,
+                reason: error.reason,
+                data: error.data,
+                transaction: error.transaction,
+                receipt: error.receipt
+            });
+
+            // Try to decode the error if it's a custom error
+            if (error.data) {
+                try {
+                    const iface = new ethers.Interface(QUIZ_MANAGER_ABI);
+                    const decodedError = iface.parseError(error.data);
+                    console.error('Decoded error:', decodedError);
+                } catch (e) {
+                    console.error('Could not decode error:', e);
+                }
+            }
+
+            throw error;
         }
 
     } catch (error) {
@@ -486,19 +521,47 @@ const handleTokenReward = async (bot, chatId, userAddress, finalScore) => {
             message: error.message,
             code: error.code,
             reason: error.reason,
-            tx: error.transaction,
-            data: error.data
+            data: error.data,
+            transaction: error.transaction,
+            receipt: error.receipt
         });
 
-        // Send more detailed error message
-        await bot.sendMessage(
-            chatId,
-            '❌ Failed to process reward.\n' + 
-            `Error: ${error.reason || error.message}\n` +
-            'Please try /start to re-register your wallet.'
-        );
+        let errorMessage = '❌ Failed to process reward.\n';
         
-        throw error;
+        if (error.code === 'INSUFFICIENT_FUNDS') {
+            errorMessage += 'Bot wallet has insufficient funds for gas fees.';
+        } else if (error.code === 'NETWORK_ERROR') {
+            errorMessage += 'Network error. Please try again later.';
+        } else if (error.message.includes('timeout')) {
+            errorMessage += 'Transaction timed out. Please try again.';
+        } else if (error.message.includes('Contract not found')) {
+            errorMessage += 'Contract not found. Please contact support.';
+        } else if (error.message.includes('Wallet not registered')) {
+            errorMessage += 'Wallet not registered. Please use /start to register.';
+        } else if (error.message.includes('Invalid user address')) {
+            errorMessage += 'Invalid wallet address. Please use /start to create a new wallet.';
+        } else if (error.message.includes('Token contract not found')) {
+            errorMessage += 'Token contract not found. Please contact support.';
+        } else if (error.message.includes('execution reverted')) {
+            errorMessage += 'Transaction reverted. Please try /start to re-register your wallet.';
+        } else if (error.message.includes('not the contract owner')) {
+            errorMessage += 'Bot configuration error. Please contact support.';
+        } else if (error.message.includes('not authorized to mint tokens')) {
+            errorMessage += 'QuizManager contract is not authorized to mint tokens. Please contact support.';
+        } else {
+            errorMessage += error.message;
+        }
+
+        await bot.sendMessage(chatId, errorMessage);
+        
+        // Only throw if it's a critical error that needs attention
+        if (error.code === 'INSUFFICIENT_FUNDS' || 
+            error.message.includes('Contract not found') || 
+            error.message.includes('Token contract not found') ||
+            error.message.includes('not the contract owner') ||
+            error.message.includes('not authorized to mint tokens')) {
+            throw error;
+        }
     }
 };
 
