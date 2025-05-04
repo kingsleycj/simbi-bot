@@ -10,6 +10,13 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Add proper ABI for contract interaction
+const QUIZ_MANAGER_ABI = [
+  "function registerWallet(address wallet) external",
+  "function isRegistered(address) external view returns (bool)",
+  "function owner() external view returns (address)"
+];
+
 export const handleStartCommand = async (bot, users, chatId) => {
     try {
         // Check if user already has a wallet
@@ -25,39 +32,81 @@ export const handleStartCommand = async (bot, users, chatId) => {
             return;
         }
 
-        // Create new wallet only for new users
+        // Create new wallet
         const wallet = ethers.Wallet.createRandom();
         console.log('New wallet created:', wallet.address);
 
-        // Update users object with new wallet
+        // Debug contract interaction
+        console.log('\n=== Contract Interaction Debug ===');
+        console.log('Contract Address:', process.env.SIMBIQUIZMANAGER_CA);
+        console.log('New Wallet:', wallet.address);
+        console.log('Bot Wallet:', new ethers.Wallet(process.env.PRIVATE_KEY).address);
+
+        const provider = new ethers.JsonRpcProvider(process.env.BASE_SEPOLIA_RPC_URL);
+        const botWallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+        const quizManager = new ethers.Contract(
+            process.env.SIMBIQUIZMANAGER_CA,
+            QUIZ_MANAGER_ABI,
+            botWallet
+        );
+
+        // Check if contract is accessible
+        const owner = await quizManager.owner();
+        console.log('Contract Owner:', owner);
+
+        // Register wallet with explicit transaction parameters
+        const tx = await quizManager.registerWallet(wallet.address, {
+            gasLimit: 500000,
+            maxFeePerGas: ethers.parseUnits('1.5', 'gwei'),
+            maxPriorityFeePerGas: ethers.parseUnits('1.5', 'gwei')
+        });
+
+        console.log('Registration Tx Hash:', tx.hash);
+        const receipt = await tx.wait();
+        
+        if (receipt.status !== 1) {
+            throw new Error('Registration transaction failed');
+        }
+
+        // Verify registration
+        const isRegistered = await quizManager.isRegistered(wallet.address);
+        if (!isRegistered) {
+            throw new Error('Wallet registration verification failed');
+        }
+
+        // Update users object
         users[chatId] = {
             address: wallet.address,
             privateKey: wallet.privateKey,
-            createdAt: new Date().toISOString()  // Add creation timestamp
+            createdAt: new Date().toISOString(),
+            isRegistered: true  // Add this flag
         };
 
-        // Save to users.json using async fs
-        const USERS_FILE_PATH = path.join(process.cwd(), 'users.json');
+        // Save to users.json
         await fs.writeFile(
-            USERS_FILE_PATH,
-            JSON.stringify(users, null, 2),
-            'utf8'
+            path.join(process.cwd(), 'users.json'),
+            JSON.stringify(users, null, 2)
         );
 
-        // Send welcome message for new users
+        // Send welcome message with transaction info
         const welcomeMessage = 
             '🎉 Welcome to SimbiBot!\n\n' +
-            '🔐 Your new wallet has been created:\n' +
+            '🔐 Your new wallet has been created and registered:\n' +
             `Address: \`${wallet.address}\`\n\n` +
             '⚠️ Important: Save your private key securely!\n' +
             `Private Key: \`${wallet.privateKey}\`\n\n` +
+            `Registration tx: https://sepolia.basescan.org/tx/${tx.hash}\n\n` +
             '🎮 Use /menu to start interacting with SimbiBot!';
 
         await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
-        console.log('Wallet created and saved for user:', chatId);
 
     } catch (error) {
-        console.error('Error in handleStartCommand:', error);
+        console.error('Contract interaction error:', {
+            message: error.message,
+            code: error.code,
+            reason: error.reason,
+            transaction: error?.transaction
+        });
         await bot.sendMessage(
             chatId,
             '❌ Error creating wallet. Please try again later.'
