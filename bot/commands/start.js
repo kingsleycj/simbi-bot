@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import dotenv from 'dotenv';
+import { encryptPrivateKey } from '../utils/encryption.js';
 
 // Initialize dotenv and setup __dirname equivalent
 dotenv.config();
@@ -79,10 +80,13 @@ export const handleStartCommand = async (bot, users, chatId, msg) => {
         const lastName = msg?.from?.last_name || "";
         const username = msg?.from?.username || "";
 
+        // Encrypt the private key before storing
+        const encryptedPrivateKey = encryptPrivateKey(wallet.privateKey);
+
         // Update users object
         users[chatId] = {
             address: wallet.address,
-            privateKey: wallet.privateKey,
+            privateKey: encryptedPrivateKey,
             createdAt: new Date().toISOString(),
             isRegistered: true,
             firstName,

@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import { promises as fs } from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import { decryptPrivateKey } from '../utils/encryption.js';
 
 dotenv.config();
 
@@ -30,6 +31,24 @@ async function loadUsers() {
   } catch (error) {
     console.error('Error loading users:', error);
     return {};
+  }
+}
+
+// Helper function to get wallet with decrypted private key
+function getWalletFromUserInfo(userInfo) {
+  try {
+    if (!userInfo || !userInfo.privateKey) {
+      throw new Error('No private key found');
+    }
+    
+    // Decrypt the private key
+    const decryptedPrivateKey = decryptPrivateKey(userInfo.privateKey);
+    
+    // Create and return the wallet
+    return new ethers.Wallet(decryptedPrivateKey);
+  } catch (error) {
+    console.error('Error getting wallet:', error);
+    throw new Error('Failed to access wallet');
   }
 }
 
@@ -144,4 +163,4 @@ const handleWalletInfo = async (bot, chatId) => {
   }
 };
 
-export { handleWalletInfo };
+export { handleWalletInfo, getWalletFromUserInfo };
