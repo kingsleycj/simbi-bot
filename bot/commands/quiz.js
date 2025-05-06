@@ -1,4 +1,3 @@
-// This file handles the quiz command and its callback for a Telegram bot using Telegraf.js.
 // It allows users to select a quiz category, answer questions, and rewards them with tokens for correct answers.
 import { ethers } from 'ethers';
 import { promises as fs } from 'fs';

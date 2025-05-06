@@ -123,14 +123,21 @@ async function verifyContractState(provider, contractAddress, userAddress) {
 }
 
 // Handle /study_session command
-const handleStudySessionCommand = async (bot, chatId) => {
+const handleStudySessionCommand = async (bot, users, chatId) => {
     try {
-        // Load users to get the wallet address
-        const users = await loadUsers();
+        // Debug info
+        console.log('\n=== Study Session Command Debug ===');
+        console.log('Chat ID:', chatId);
+        console.log('Users object available:', !!users);
+        console.log('Users keys:', Object.keys(users));
+        
+        // Check if user exists in users object
         const userInfo = users[chatId.toString()];
-
+        console.log('User exists:', !!userInfo);
+        
         // Check if user has a wallet
         if (!userInfo || !userInfo.address) {
+            console.log('No wallet found for user');
             return bot.sendMessage(
                 chatId,
                 "⚠️ You need to create a wallet first. Use the /start command to set up your wallet.",
@@ -141,6 +148,8 @@ const handleStudySessionCommand = async (bot, chatId) => {
                 }
             );
         }
+        
+        console.log('User wallet address:', userInfo.address);
 
         // Offer duration options
         const durationOptions = {
@@ -194,6 +203,17 @@ const encouragingMessages = [
 // Handle study session callbacks
 const handleStudySessionCallback = async (bot, users, chatId, data) => {
     try {
+        // Debug logging
+        console.log('\n=== Study Session Callback Debug ===');
+        console.log('Chat ID:', chatId);
+        console.log('Data:', data);
+        console.log('Users object keys:', Object.keys(users).length);
+        console.log('User exists:', users[chatId.toString()] ? 'Yes' : 'No');
+        if (users[chatId.toString()]) {
+            console.log('User address exists:', users[chatId.toString()].address ? 'Yes' : 'No');
+            console.log('User wallet address:', users[chatId.toString()].address);
+        }
+        
         // Check if the user has a valid wallet
         const userInfo = users[chatId.toString()];
         if (!userInfo || !userInfo.address) {
@@ -408,11 +428,13 @@ const rewardStudySession = async (bot, chatId, userAddress) => {
 
         // Verify environment variables
         verifyEnvironment();
+        console.log('Environment variables verified');
 
         // Validate user address
         if (!ethers.isAddress(userAddress)) {
             throw new Error('Invalid user address format');
         }
+        console.log('User address format valid');
 
         const provider = new ethers.JsonRpcProvider(process.env.BASE_SEPOLIA_RPC_URL);
         const botWallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
@@ -427,11 +449,52 @@ const rewardStudySession = async (bot, chatId, userAddress) => {
         if (botBalance < ethers.parseEther('0.01')) {
             throw new Error('Bot wallet has insufficient funds for gas fees');
         }
+        console.log('Bot wallet has sufficient balance');
 
-        // Verify contract state
-        const contractState = await verifyContractState(provider, process.env.SIMBIQUIZMANAGER_CA, userAddress);
-        if (!contractState) {
-            throw new Error('Contract verification failed. Please try /start to register your wallet.');
+        try {
+            // Verify contract state
+            console.log('Starting contract verification...');
+            const contractState = await verifyContractState(provider, process.env.SIMBIQUIZMANAGER_CA, userAddress);
+            console.log('Contract verification result:', contractState);
+            
+            if (!contractState) {
+                console.log('Contract verification failed - attempting to register wallet');
+                
+                // Try to re-register the wallet
+                const botWallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+                const quizManager = new ethers.Contract(
+                    process.env.SIMBIQUIZMANAGER_CA,
+                    QUIZ_MANAGER_ABI,
+                    botWallet
+                );
+                
+                console.log('Attempting to re-register wallet:', userAddress);
+                try {
+                    const tx = await quizManager.reRegisterWallet(userAddress, {
+                        gasLimit: 500000,
+                        maxFeePerGas: ethers.parseUnits('1.5', 'gwei'),
+                        maxPriorityFeePerGas: ethers.parseUnits('1.5', 'gwei')
+                    });
+                    
+                    console.log('Re-registration tx sent:', tx.hash);
+                    const receipt = await tx.wait();
+                    console.log('Re-registration complete, status:', receipt.status);
+                    
+                    // Verify again
+                    const newContractState = await verifyContractState(provider, process.env.SIMBIQUIZMANAGER_CA, userAddress);
+                    console.log('New contract verification result:', newContractState);
+                    
+                    if (!newContractState) {
+                        throw new Error('Contract verification still failed after re-registration');
+                    }
+                } catch (regError) {
+                    console.error('Error re-registering wallet:', regError);
+                    throw new Error('Failed to re-register wallet: ' + regError.message);
+                }
+            }
+        } catch (verifyError) {
+            console.error('Error during contract verification:', verifyError);
+            throw new Error('Contract verification error: ' + verifyError.message);
         }
 
         // Initialize quiz manager contract with signer
@@ -490,27 +553,10 @@ const rewardStudySession = async (bot, chatId, userAddress) => {
         }
 
     } catch (error) {
-        console.error('Reward Error:', error);
-        
-        let errorMessage = '❌ Failed to process reward.\n';
-        
-        if (error.code === 'INSUFFICIENT_FUNDS') {
-            errorMessage += 'Bot wallet has insufficient funds for gas fees.';
-        } else if (error.code === 'NETWORK_ERROR') {
-            errorMessage += 'Network error. Please try again later.';
-        } else if (error.message.includes('timeout')) {
-            errorMessage += 'Transaction timed out. Please try again.';
-        } else if (error.message.includes('Contract not found')) {
-            errorMessage += 'Contract not found. Please contact support.';
-        } else if (error.message.includes('Wallet not registered')) {
-            errorMessage += 'Wallet not registered. Please use /start to register.';
-        } else {
-            errorMessage += error.message;
-        }
-
-        await bot.sendMessage(
-            chatId, 
-            errorMessage,
+        console.error('Failed to process study session reward:', error);
+        bot.sendMessage(
+            chatId,
+            "❌ Failed to process rewards. Please try again later or use /start command to ensure your wallet is registered.",
             {
                 reply_markup: {
                     inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
@@ -649,4 +695,5 @@ const checkBadgeMilestone = async (bot, chatId, userAddress, completedSessions) 
     }
 };
 
+// Export functions
 export { handleStudySessionCommand, handleStudySessionCallback, handleCancelStudySession }; 

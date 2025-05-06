@@ -100,7 +100,7 @@ bot.onText(/\/sync/, (msg) => handleSyncCommand(bot, users, msg.chat.id.toString
 bot.onText(/\/connect/, (msg) => handleConnectCommand(bot, users, msg.chat.id.toString(), saveUsers));
 bot.onText(/\/reminder/, (msg) => handleSetReminderCommand(bot, msg.chat.id.toString()));
 bot.onText(/\/track_progress/, (msg) => handleTrackProgressCommand(bot, users, msg.chat.id.toString(), process.env.SIMBIBADGE_NFT_CA, process.env.BASE_SEPOLIA_RPC_URL));
-bot.onText(/\/study_session/, (msg) => handleStudySessionCommand(bot, msg.chat.id.toString()));
+bot.onText(/\/study_session/, (msg) => handleStudySessionCommand(bot, users, msg.chat.id.toString()));
 bot.onText(/\/help/, (msg) => handleHelpCommand(bot, msg.chat.id.toString()));
 bot.onText(/\/profile/, (msg) => handleProfileInfo(bot, msg.chat.id.toString(), msg));
 
@@ -168,9 +168,13 @@ bot.on('callback_query', (query) => {
       handleMotivation(bot, chatId);
     } else if (data === 'study_session') {
       console.log('Triggering handleStudySessionCommand...');
-      handleStudySessionCommand(bot, chatId);
+      handleStudySessionCommand(bot, users, chatId);
     } else if (data.startsWith('study_')) {
       console.log('Triggering handleStudySessionCallback...');
+      console.log('Users object available:', !!users);
+      console.log('Chat ID type:', typeof chatId);
+      console.log('Chat ID:', chatId);
+      console.log('Users keys:', Object.keys(users));
       handleStudySessionCallback(bot, users, chatId, data);
     } else if (data === 'cancel_study') {
       console.log('Triggering handleCancelStudySession...');

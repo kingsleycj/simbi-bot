@@ -13,12 +13,12 @@ const handleHelpCommand = async (bot, chatId) => {
 • /help - Display this help guide
 
 *Study Tools:*
-• /study_session - Start a focused study session
+• /study__session - Start a focused study session
 • /quiz - Take a quiz to test your knowledge
 • /reminder - Set up study reminders
 
 *Progress Tracking:*
-• /track_progress - View your on-chain progress
+• /track__progress - View your on-chain progress
 • /profile - See your user profile
 • /wallet - Check your SIMBI token balance
 
