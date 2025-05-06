@@ -24,7 +24,7 @@ import { handleTrackProgressCommand, handleAchievementNFTs } from './bot/command
 import { handleWalletInfo } from './bot/commands/wallet.js';
 import { handleProfileInfo } from './bot/commands/profile.js';
 import { handleMotivation } from './bot/commands/motivation.js';
-import { handleHumor } from './bot/commands/humor.js';
+import { handleStudySessionCommand, handleStudySessionCallback } from './bot/commands/study_session.js';
 // import { handleHelpCommand } from './bot/commands/help.js';
 
 // Debug environment variables
@@ -100,6 +100,7 @@ bot.onText(/\/sync/, (msg) => handleSyncCommand(bot, users, msg.chat.id.toString
 bot.onText(/\/connect/, (msg) => handleConnectCommand(bot, users, msg.chat.id.toString(), saveUsers));
 bot.onText(/\/reminder/, (msg) => handleSetReminderCommand(bot, msg.chat.id.toString()));
 bot.onText(/\/track_progress/, (msg) => handleTrackProgressCommand(bot, users, msg.chat.id.toString(), process.env.SIMBI_CONTRACT_ADDRESS, process.env.SIMBIBADGE_NFT_CA, process.env.BASE_SEPOLIA_RPC_URL));
+bot.onText(/\/study_session/, (msg) => handleStudySessionCommand(bot, msg.chat.id.toString()));
 
 // Handle unknown commands
 bot.on('message', (msg) => {
@@ -151,9 +152,12 @@ bot.on('callback_query', (query) => {
     } else if (data === 'motivation') {
       console.log('Triggering handleMotivation...');
       handleMotivation(bot, chatId);
-    } else if (data === 'humor') {
-      console.log('Triggering handleHumor...');
-      handleHumor(bot, chatId);
+    } else if (data === 'study_session') {
+      console.log('Triggering handleStudySessionCommand...');
+      handleStudySessionCommand(bot, chatId);
+    } else if (data.startsWith('study_')) {
+      console.log('Triggering handleStudySessionCallback...');
+      handleStudySessionCallback(bot, users, chatId, data);
     } else {
       console.log('Unknown action received:', data);
       bot.sendMessage(chatId, '❓ Unknown action. Please try again.');
