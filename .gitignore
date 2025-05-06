@@ -5,3 +5,4 @@ cache
 artifacts
 index.html
 package-lock.json
+temp/

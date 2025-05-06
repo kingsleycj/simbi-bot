@@ -17,7 +17,7 @@ const QUIZ_MANAGER_ABI = [
   "function owner() external view returns (address)"
 ];
 
-export const handleStartCommand = async (bot, users, chatId) => {
+export const handleStartCommand = async (bot, users, chatId, msg) => {
     try {
         // Check if user already has a wallet
         if (users[chatId] && users[chatId].address) {
@@ -74,12 +74,28 @@ export const handleStartCommand = async (bot, users, chatId) => {
             throw new Error('Wallet registration verification failed');
         }
 
+        // Extract user information from message
+        const firstName = msg?.from?.first_name || "";
+        const lastName = msg?.from?.last_name || "";
+        const username = msg?.from?.username || "";
+
         // Update users object
         users[chatId] = {
             address: wallet.address,
             privateKey: wallet.privateKey,
             createdAt: new Date().toISOString(),
-            isRegistered: true  // Add this flag
+            isRegistered: true,
+            firstName,
+            lastName,
+            username,
+            balance: 0,
+            tokens: [],
+            studySessions: {
+                completed: 0,
+                ongoing: null,
+                history: []
+            },
+            completedQuizzes: 0
         };
 
         // Save to users.json

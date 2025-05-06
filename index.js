@@ -19,13 +19,13 @@ import { handleMenuCommand } from './bot/commands/menu.js';
 import { handleQuizCommand, handleQuizCallback, handleAnswerCallback } from './bot/commands/quiz.js';
 import { handleSyncCommand } from './bot/commands/sync.js';
 import { handleConnectCommand } from './bot/commands/connect.js';
-import { handleSetReminderCommand } from './bot/commands/reminder.js';
-import { handleTrackProgressCommand, handleAchievementNFTs } from './bot/commands/trackProgress.js';
+import { handleSetReminderCommand, handleListReminders, handleCancelReminder } from './bot/commands/reminder.js';
+import { handleTrackProgressCommand, handleAchievementNFTs, handleShareProgress } from './bot/commands/trackProgress.js';
 import { handleWalletInfo } from './bot/commands/wallet.js';
 import { handleProfileInfo } from './bot/commands/profile.js';
 import { handleMotivation } from './bot/commands/motivation.js';
-import { handleStudySessionCommand, handleStudySessionCallback } from './bot/commands/study_session.js';
-// import { handleHelpCommand } from './bot/commands/help.js';
+import { handleStudySessionCommand, handleStudySessionCallback, handleCancelStudySession } from './bot/commands/study_session.js';
+import { handleHelpCommand } from './bot/commands/help.js';
 
 // Debug environment variables
 console.log('Environment Variables:');
@@ -93,14 +93,16 @@ async function saveUsers() {
 }
 
 // Update command handlers
-bot.onText(/\/start/, (msg) => handleStartCommand(bot, users, msg.chat.id.toString(), USERS_DB_FILE));
+bot.onText(/\/start/, (msg) => handleStartCommand(bot, users, msg.chat.id.toString(), msg));
 bot.onText(/\/menu/, (msg) => handleMenuCommand(bot, msg.chat.id.toString()));
 bot.onText(/\/quiz/, (msg) => handleQuizCommand(bot, users, msg.chat.id.toString(), process.env.SIMBIQUIZMANAGER_CA, process.env.PRIVATE_KEY, process.env.BASE_SEPOLIA_RPC_URL));
 bot.onText(/\/sync/, (msg) => handleSyncCommand(bot, users, msg.chat.id.toString(), saveUsers));
 bot.onText(/\/connect/, (msg) => handleConnectCommand(bot, users, msg.chat.id.toString(), saveUsers));
 bot.onText(/\/reminder/, (msg) => handleSetReminderCommand(bot, msg.chat.id.toString()));
-bot.onText(/\/track_progress/, (msg) => handleTrackProgressCommand(bot, users, msg.chat.id.toString(), process.env.SIMBI_CONTRACT_ADDRESS, process.env.SIMBIBADGE_NFT_CA, process.env.BASE_SEPOLIA_RPC_URL));
+bot.onText(/\/track_progress/, (msg) => handleTrackProgressCommand(bot, users, msg.chat.id.toString(), process.env.SIMBIBADGE_NFT_CA, process.env.BASE_SEPOLIA_RPC_URL));
 bot.onText(/\/study_session/, (msg) => handleStudySessionCommand(bot, msg.chat.id.toString()));
+bot.onText(/\/help/, (msg) => handleHelpCommand(bot, msg.chat.id.toString()));
+bot.onText(/\/profile/, (msg) => handleProfileInfo(bot, msg.chat.id.toString(), msg));
 
 // Handle unknown commands
 bot.on('message', (msg) => {
@@ -122,7 +124,10 @@ bot.on('callback_query', (query) => {
   console.log('Callback Query Data:', data);
 
   try {
-    if (data === 'quiz') {
+    if (data === 'menu') {
+      console.log('Triggering handleMenuCommand...');
+      handleMenuCommand(bot, chatId);
+    } else if (data === 'quiz') {
       console.log('Triggering handleQuizCommand...');
       handleQuizCommand(bot, users, chatId);
     } else if (data.startsWith('quiz_')) {
@@ -136,19 +141,28 @@ bot.on('callback_query', (query) => {
       handleWalletInfo(bot, chatId);
     } else if (data === 'profile') {
       console.log('Triggering handleProfileInfo...');
-      handleProfileInfo(bot, chatId); // Handle profile info
+      handleProfileInfo(bot, chatId, query.message);
     } else if (data === 'help') {
       console.log('Triggering handleHelpCommand...');
-      handleHelpCommand(bot, chatId); // Handle help command
+      handleHelpCommand(bot, chatId);
     } else if (data === 'reminder') {
       console.log('Triggering handleSetReminderCommand...');
-      handleSetReminderCommand(bot, chatId); // Handle reminder
+      handleSetReminderCommand(bot, chatId);
+    } else if (data === 'list_reminders') {
+      console.log('Triggering handleListReminders...');
+      handleListReminders(bot, chatId);
+    } else if (data === 'cancel_reminder') {
+      console.log('Triggering handleCancelReminder...');
+      handleCancelReminder(bot, chatId);
     } else if (data === 'progress') {
       console.log('Triggering handleTrackProgressCommand...');
       handleTrackProgressCommand(bot, users, chatId);
     } else if (data === 'achievements') {
       console.log('Triggering handleAchievementNFTs...');
       handleAchievementNFTs(bot, users, chatId);
+    } else if (data === 'share_progress') {
+      console.log('Triggering handleShareProgress...');
+      handleShareProgress(bot, users, chatId);
     } else if (data === 'motivation') {
       console.log('Triggering handleMotivation...');
       handleMotivation(bot, chatId);
@@ -158,13 +172,32 @@ bot.on('callback_query', (query) => {
     } else if (data.startsWith('study_')) {
       console.log('Triggering handleStudySessionCallback...');
       handleStudySessionCallback(bot, users, chatId, data);
+    } else if (data === 'cancel_study') {
+      console.log('Triggering handleCancelStudySession...');
+      handleCancelStudySession(bot, users, chatId);
     } else {
       console.log('Unknown action received:', data);
-      bot.sendMessage(chatId, '❓ Unknown action. Please try again.');
+      bot.sendMessage(
+        chatId, 
+        '❓ Unknown action. Please try again.',
+        {
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+          }
+        }
+      );
     }
   } catch (error) {
     console.error('Error handling callback query:', error);
-    bot.sendMessage(chatId, '⚠️ An error occurred. Please try again later.');
+    bot.sendMessage(
+      chatId, 
+      '⚠️ An error occurred. Please try again later.',
+      {
+        reply_markup: {
+          inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+        }
+      }
+    );
   }
 });
 
