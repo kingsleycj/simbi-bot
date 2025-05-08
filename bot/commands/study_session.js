@@ -229,7 +229,8 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
         }
 
         // Parse the duration from callback data
-        const duration = data === "study_25" ? 25 : 50;
+        // For testing: 25 minutes will actually be 2 minutes
+        const duration = data === "study_25" ? 2 : 50;
         
         // Record session start in user data
         if (!userInfo.studySessions) {
@@ -269,7 +270,7 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
         ];
         
         const startMessage = startMessages[Math.floor(Math.random() * startMessages.length)]
-            .replace("{{duration}}", duration);
+            .replace("{{duration}}", data === "study_25" ? "25" : "50"); // Keep UI text as 25/50
         
         await bot.sendMessage(
             chatId, 
@@ -281,8 +282,8 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
             }
         );
         
-        // Calculate message intervals
-        const messageInterval = duration <= 25 ? 5 : 10; // minutes
+        // Calculate message intervals - adjusted for shorter duration
+        const messageInterval = duration <= 2 ? 1 : 10; // minutes
         const sessionDurationMs = duration * 60 * 1000;
         const messageIntervalMs = messageInterval * 60 * 1000;
         
@@ -317,7 +318,7 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
                     // Send completion message
                     await bot.sendMessage(
                         chatId,
-                        `🎉 Congratulations! You've completed a ${duration}-minute study session!\n\nProcessing your reward...`
+                        `🎉 Congratulations! You've completed a ${data === "study_25" ? "25" : "50"}-minute study session!\n\nProcessing your reward...`
                     );
                     
                     // Reward the user with tokens
