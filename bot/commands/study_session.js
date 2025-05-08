@@ -513,25 +513,19 @@ const rewardStudySession = async (bot, chatId, userAddress) => {
         console.log('- User address:', userAddress);
         console.log('- Score:', score);
         
-        // Explicitly encode the function data to ensure proper transaction formatting
-        const functionData = quizManager.interface.encodeFunctionData(
-            "completeQuiz",
-            [userAddress, score]
+        // FIXED: Directly call the contract method instead of manually constructing the transaction
+        // This ensures the data field is properly included
+        const tx = await quizManager.completeQuiz(
+            userAddress, 
+            score,
+            {
+                gasLimit: 500000,
+                maxFeePerGas: ethers.parseUnits('2', 'gwei'),
+                maxPriorityFeePerGas: ethers.parseUnits('1.5', 'gwei')
+            }
         );
-        
-        console.log('Encoded function data:', functionData);
-
-        // Send transaction with explicit data to ensure it's properly formatted
-        const tx = await botWallet.sendTransaction({
-            to: process.env.SIMBIQUIZMANAGER_CA,
-            data: functionData,
-            gasLimit: 500000n,
-            maxFeePerGas: ethers.parseUnits('2', 'gwei'),
-            maxPriorityFeePerGas: ethers.parseUnits('1.5', 'gwei')
-        });
 
         console.log('Transaction sent:', tx.hash);
-        console.log('Transaction data:', tx.data);
         
         await bot.sendMessage(
             chatId,
