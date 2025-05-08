@@ -183,9 +183,9 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
 • Gold Tier Progress: ${gold.toString()}/70
 
 🔗 *Cross-Platform Access:*
-• View on blockchain explorer: ${explorerUrl}
+• View on blockchain explorer: [Explorer](${explorerUrl})
 • Scan the QR code to view on mobile
-• Use command /export_progress to receive a full report by email
+• Use /export\\_progress to receive a full report by email
 `;
 
     // Send progress information with Back to Menu button
