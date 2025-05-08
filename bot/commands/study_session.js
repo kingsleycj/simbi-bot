@@ -452,103 +452,169 @@ const rewardStudySession = async (bot, chatId, userAddress) => {
         }
         console.log('Bot wallet has sufficient balance');
 
-        try {
-            // Verify contract state
-            console.log('Starting contract verification...');
-            const contractState = await verifyContractState(provider, process.env.SIMBIQUIZMANAGER_CA, userAddress);
-            console.log('Contract verification result:', contractState);
+        // Verify contract state
+        console.log('Starting contract verification...');
+        const contractState = await verifyContractState(provider, process.env.SIMBIQUIZMANAGER_CA, userAddress);
+        console.log('Contract verification result:', contractState);
+        
+        if (!contractState) {
+            console.log('Contract verification failed - attempting to register wallet');
             
-            if (!contractState) {
-                console.log('Contract verification failed - attempting to register wallet');
+            // Try to re-register the wallet
+            const quizManager = new ethers.Contract(
+                process.env.SIMBIQUIZMANAGER_CA,
+                QUIZ_MANAGER_ABI,
+                botWallet
+            );
+            
+            console.log('Attempting to re-register wallet:', userAddress);
+            try {
+                const tx = await quizManager.reRegisterWallet(userAddress, {
+                    gasLimit: 500000,
+                    maxFeePerGas: ethers.parseUnits('1.5', 'gwei'),
+                    maxPriorityFeePerGas: ethers.parseUnits('1.5', 'gwei')
+                });
                 
-                // Try to re-register the wallet
-                const botWallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
-                const quizManager = new ethers.Contract(
-                    process.env.SIMBIQUIZMANAGER_CA,
-                    QUIZ_MANAGER_ABI,
-                    botWallet
-                );
+                console.log('Re-registration tx sent:', tx.hash);
+                const receipt = await tx.wait();
+                console.log('Re-registration complete, status:', receipt.status);
                 
-                console.log('Attempting to re-register wallet:', userAddress);
-                try {
-                    const tx = await quizManager.reRegisterWallet(userAddress, {
-                        gasLimit: 500000,
-                        maxFeePerGas: ethers.parseUnits('1.5', 'gwei'),
-                        maxPriorityFeePerGas: ethers.parseUnits('1.5', 'gwei')
-                    });
-                    
-                    console.log('Re-registration tx sent:', tx.hash);
-                    const receipt = await tx.wait();
-                    console.log('Re-registration complete, status:', receipt.status);
-                    
-                    // Verify again
-                    const newContractState = await verifyContractState(provider, process.env.SIMBIQUIZMANAGER_CA, userAddress);
-                    console.log('New contract verification result:', newContractState);
-                    
-                    if (!newContractState) {
-                        throw new Error('Contract verification still failed after re-registration');
-                    }
-                } catch (regError) {
-                    console.error('Error re-registering wallet:', regError);
-                    throw new Error('Failed to re-register wallet: ' + regError.message);
+                // Verify again
+                const newContractState = await verifyContractState(provider, process.env.SIMBIQUIZMANAGER_CA, userAddress);
+                console.log('New contract verification result:', newContractState);
+                
+                if (!newContractState) {
+                    throw new Error('Contract verification still failed after re-registration');
                 }
+            } catch (regError) {
+                console.error('Error re-registering wallet:', regError);
+                throw new Error('Failed to re-register wallet: ' + regError.message);
             }
-        } catch (verifyError) {
-            console.error('Error during contract verification:', verifyError);
-            throw new Error('Contract verification error: ' + verifyError.message);
         }
 
-        // Initialize quiz manager contract with signer
+        // Initialize quiz manager contract to get token contract address
         const quizManager = new ethers.Contract(
             process.env.SIMBIQUIZMANAGER_CA,
             QUIZ_MANAGER_ABI,
-            botWallet
+            provider
         );
 
-        // Use full score (100) for token rewards since this is a completed study session
-        const score = 100;
-
-        // Log the function parameters for debugging
-        console.log('Calling completeQuiz with parameters:');
-        console.log('- User address:', userAddress);
-        console.log('- Score:', score);
+        // Get token address from QuizManager
+        const tokenAddress = await quizManager.token();
+        console.log('Token contract address:', tokenAddress);
         
-        // FIXED: Directly call the contract method instead of manually constructing the transaction
-        // This ensures the data field is properly included
-        const tx = await quizManager.completeQuiz(
-            userAddress, 
-            score,
+        // Define Token ABI similar to quiz.js
+        const TOKEN_ABI = [
+            "function mintToUser(address to, uint256 amount) external",
+            "function balanceOf(address) external view returns (uint256)",
+            "function minters(address) external view returns (bool)",
+            "function owner() external view returns (address)",
+            "function getUserMinted() external view returns (uint256)",
+            "function USER_SUPPLY_CAP() external view returns (uint256)",
+            "function getRemainingUserSupply() external view returns (uint256)"
+        ];
+        
+        // Initialize token contract with signer
+        const tokenContract = new ethers.Contract(
+            tokenAddress,
+            TOKEN_ABI,
+            botWallet  // Use bot wallet signer for token contract
+        );
+        
+        // Get reward amount from QuizManager (or set fixed amount for study session)
+        // Let's use 20 tokens as a fixed reward for study sessions
+        const rewardAmount = ethers.parseEther("20");
+        
+        // Get initial balance
+        const initialBalance = await tokenContract.balanceOf(userAddress);
+        console.log('Initial token balance:', ethers.formatEther(initialBalance));
+        
+        // Check remaining supply
+        try {
+            const remainingSupply = await tokenContract.getRemainingUserSupply();
+            console.log('Remaining token supply:', ethers.formatEther(remainingSupply));
+            
+            if (remainingSupply < rewardAmount) {
+                throw new Error('Insufficient token supply for rewards');
+            }
+        } catch (error) {
+            console.log('Could not check remaining supply, proceeding anyway:', error.message);
+        }
+        
+        console.log('Directly minting tokens to user...');
+        // MINT DIRECTLY: Call mintToUser function of token contract directly
+        const tx = await tokenContract.mintToUser(
+            userAddress,
+            rewardAmount,
             {
                 gasLimit: 500000,
                 maxFeePerGas: ethers.parseUnits('2', 'gwei'),
                 maxPriorityFeePerGas: ethers.parseUnits('1.5', 'gwei')
             }
         );
-
+        
         console.log('Transaction sent:', tx.hash);
+        console.log('Transaction details:', {
+            to: tx.to,
+            from: tx.from,
+            data: tx.data,
+            gasLimit: tx.gasLimit?.toString(),
+            maxFeePerGas: tx.maxFeePerGas?.toString(),
+            maxPriorityFeePerGas: tx.maxPriorityFeePerGas?.toString()
+        });
         
         await bot.sendMessage(
             chatId,
             `🎮 Processing reward...\nTransaction: https://sepolia.basescan.org/tx/${tx.hash}`
         );
-
+        
         // Wait for transaction confirmation
+        console.log('Waiting for transaction confirmation...');
         const receipt = await tx.wait(1);
+        console.log('Transaction receipt:', {
+            status: receipt.status,
+            blockNumber: receipt.blockNumber,
+            gasUsed: receipt.gasUsed?.toString(),
+            logs: receipt.logs.length
+        });
         
         if (receipt.status === 1) {
+            // Verify token transfer
+            const newBalance = await tokenContract.balanceOf(userAddress);
+            console.log('New balance:', ethers.formatEther(newBalance));
+            
             await bot.sendMessage(
                 chatId,
                 `✅ Study session rewards processed successfully!\n\n` +
                 `Reward: 20 SIMBI tokens\n` +
+                `New Balance: ${ethers.formatEther(newBalance)} SIMBI\n` +
                 `Transaction: https://sepolia.basescan.org/tx/${receipt.hash}`
             );
             return true;
         } else {
             throw new Error(`Transaction failed: ${tx.hash}`);
         }
-
     } catch (error) {
         console.error('Failed to process study session reward:', error);
+        
+        // More detailed error logging
+        if (error.transaction) {
+            console.error('Transaction details:', {
+                hash: error.transaction.hash,
+                from: error.transaction.from,
+                to: error.transaction.to,
+                data: error.transaction.data || 'No data',
+                nonce: error.transaction.nonce
+            });
+        }
+        
+        // Try to extract reason
+        const reason = error.reason || 
+                       (error.error && error.error.reason) || 
+                       (error.data !== '0x' && error.data) || 
+                       'Unknown reason';
+        console.error('Error reason:', reason);
+        
         bot.sendMessage(
             chatId,
             "❌ Failed to process rewards. Please try again later or use /start command to ensure your wallet is registered.",
