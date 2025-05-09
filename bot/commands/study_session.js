@@ -129,10 +129,23 @@ const handleStudySessionCommand = async (bot, users, chatId) => {
         console.log('\n=== Study Session Command Debug ===');
         console.log('Chat ID:', chatId);
         console.log('Users object available:', !!users);
-        console.log('Users keys:', Object.keys(users));
+        
+        // Always load fresh user data
+        const freshUsers = await loadUsers();
+        console.log('Fresh users keys:', Object.keys(freshUsers));
+        
+        // Update in-memory users with fresh data
+        if (freshUsers[chatId] && !users[chatId]) {
+            users[chatId] = freshUsers[chatId];
+        }
+        
+        console.log('Updated users keys:', Object.keys(users));
+        
+        // Ensure consistent string format for chatId
+        const chatIdStr = chatId.toString();
         
         // Check if user exists in users object
-        const userInfo = users[chatId.toString()];
+        const userInfo = users[chatIdStr] || freshUsers[chatIdStr];
         console.log('User exists:', !!userInfo);
         
         // Check if user has a wallet
@@ -207,15 +220,27 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
         console.log('\n=== Study Session Callback Debug ===');
         console.log('Chat ID:', chatId);
         console.log('Data:', data);
-        console.log('Users object keys:', Object.keys(users).length);
-        console.log('User exists:', users[chatId.toString()] ? 'Yes' : 'No');
-        if (users[chatId.toString()]) {
-            console.log('User address exists:', users[chatId.toString()].address ? 'Yes' : 'No');
-            console.log('User wallet address:', users[chatId.toString()].address);
+        
+        // Always load fresh user data
+        const freshUsers = await loadUsers();
+        console.log('Fresh users keys:', Object.keys(freshUsers));
+        
+        // Update in-memory users with fresh data
+        if (freshUsers[chatId] && !users[chatId]) {
+            users[chatId] = freshUsers[chatId];
+        }
+        
+        // Ensure consistent string format for chatId
+        const chatIdStr = chatId.toString();
+        console.log('User exists:', users[chatIdStr] ? 'Yes' : 'No');
+        
+        if (users[chatIdStr]) {
+            console.log('User address exists:', users[chatIdStr].address ? 'Yes' : 'No');
+            console.log('User wallet address:', users[chatIdStr].address);
         }
         
         // Check if the user has a valid wallet
-        const userInfo = users[chatId.toString()];
+        const userInfo = users[chatIdStr] || freshUsers[chatIdStr];
         if (!userInfo || !userInfo.address) {
             return bot.sendMessage(
                 chatId,
@@ -313,6 +338,25 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
                     // Mark session as completed
                     currentUserInfo.studySessions.inProgress = false;
                     currentUserInfo.studySessions.completed += 1;
+                    
+                    // Add session to history for proper time tracking
+                    const sessionDuration = data === "study_25" ? 25 : 50; // Use actual intended duration for stats
+                    const sessionEndTime = Date.now();
+                    const sessionStartTime = currentUserInfo.studySessions.startTime;
+                    
+                    // Initialize history array if it doesn't exist
+                    if (!currentUserInfo.studySessions.history) {
+                        currentUserInfo.studySessions.history = [];
+                    }
+                    
+                    // Add this session to history
+                    currentUserInfo.studySessions.history.push({
+                        startTime: sessionStartTime,
+                        endTime: sessionEndTime,
+                        duration: sessionDuration,
+                        type: data === "study_25" ? "pomodoro" : "extended"
+                    });
+                    
                     await saveUsers(currentUsers);
                     
                     // Send completion message
@@ -375,7 +419,17 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
 // Handle cancel study session
 const handleCancelStudySession = async (bot, users, chatId) => {
     try {
-        const userInfo = users[chatId.toString()];
+        // Always load fresh user data
+        const freshUsers = await loadUsers();
+        
+        // Update in-memory users with fresh data
+        if (freshUsers[chatId] && !users[chatId]) {
+            users[chatId] = freshUsers[chatId];
+        }
+        
+        // Ensure consistent string format for chatId
+        const chatIdStr = chatId.toString();
+        const userInfo = users[chatIdStr] || freshUsers[chatIdStr];
         
         if (!userInfo || !userInfo.studySessions || !userInfo.studySessions.inProgress) {
             return bot.sendMessage(

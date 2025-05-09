@@ -203,7 +203,15 @@ async function saveUsers(users) {
   }
 }
 
-const handleQuizCommand = (bot, users, chatId) => {
+const handleQuizCommand = async (bot, users, chatId) => {
+  // Always load fresh user data
+  const freshUsers = await loadUsers();
+  
+  // Update in-memory users with fresh data
+  if (freshUsers[chatId] && !users[chatId]) {
+    users[chatId] = freshUsers[chatId];
+  }
+
   const categories = Object.keys(quizData);
 
   if (categories.length === 0) {
@@ -226,22 +234,28 @@ const handleQuizCommand = (bot, users, chatId) => {
     });
 };
 
-// Update the handleQuizCallback function to remove registration check
+// Update the handleQuizCallback function to ensure users data is loaded
 const handleQuizCallback = async (bot, users, chatId, data) => {
   try {
     console.log('\n=== Quiz Start Debug ===');
+    // Always load fresh user data
     const currentUsers = await loadUsers();
     console.log('Current users data:', currentUsers);
     console.log('Chat ID:', chatId);
     
+    // Update in-memory users with fresh data
+    if (currentUsers[chatId] && !users[chatId]) {
+      users[chatId] = currentUsers[chatId];
+    }
+    
     // Log registration status
-    if (currentUsers[chatId]) {
-      console.log('User wallet:', currentUsers[chatId].address);
-      console.log('Is registered:', currentUsers[chatId].isRegistered);
+    if (users[chatId]) {
+      console.log('User wallet:', users[chatId].address);
+      console.log('Is registered:', users[chatId].isRegistered);
     }
 
     // 1. Check if user has wallet and is registered
-    if (!currentUsers[chatId] || !currentUsers[chatId].address || !currentUsers[chatId].isRegistered) {
+    if (!users[chatId] || !users[chatId].address || !users[chatId].isRegistered) {
       await bot.sendMessage(
         chatId, 
         '❌ Please use /start first to create and register your wallet.'
@@ -295,7 +309,15 @@ const handleQuizCallback = async (bot, users, chatId, data) => {
   }
 };
 
-const handleAnswerCallback = (bot, users, chatId, data) => {
+const handleAnswerCallback = async (bot, users, chatId, data) => {
+  // Always load fresh user data
+  const freshUsers = await loadUsers();
+  
+  // Update in-memory users with fresh data
+  if (freshUsers[chatId] && !users[chatId]) {
+    users[chatId] = freshUsers[chatId];
+  }
+
   const [_, category, selectedOptionIndex] = data.split('_');
   const userProgress = users[chatId];
   const quizzes = quizData[category];
@@ -376,7 +398,23 @@ const progressToNextQuestion = async (bot, users, chatId, category, quizzes) => 
       );
     }
 
-    delete users[chatId];
+    // Instead of deleting user data, just remove the quiz progress
+    // We keep the user's wallet and other information
+    if (users[chatId]) {
+      // Increment completedQuizzes counter
+      if (!users[chatId].completedQuizzes) {
+        users[chatId].completedQuizzes = 1;
+      } else {
+        users[chatId].completedQuizzes += 1;
+      }
+      
+      // Remove only quiz-specific properties
+      delete users[chatId].score;
+      delete users[chatId].currentQuestionIndex;
+      delete users[chatId].category;
+      delete users[chatId].quizStartTime;
+    }
+    
     return;
   }
 
@@ -558,6 +596,54 @@ const handleTokenReward = async (bot, chatId, userAddress, finalScore) => {
             } catch (e) {
                 console.log('Background quiz stats update failed (non-critical):', e.message);
             }
+            
+            // Make sure to load the latest user data before redirecting
+            try {
+                const usersFile = path.join(process.cwd(), 'users.json');
+                const userData = await fs.readFile(usersFile, 'utf8');
+                const updatedUsers = JSON.parse(userData);
+                
+                // Keep the user data in memory
+                if (updatedUsers[chatId] && !users[chatId]) {
+                    users[chatId] = updatedUsers[chatId];
+                }
+                
+                // Ensure completedQuizzes is updated and saved to file
+                if (users[chatId]) {
+                    if (!users[chatId].completedQuizzes) {
+                        users[chatId].completedQuizzes = 1;
+                    } else {
+                        users[chatId].completedQuizzes += 1;
+                    }
+                    
+                    // Save changes back to file
+                    await fs.writeFile(usersFile, JSON.stringify(updatedUsers, null, 2));
+                    console.log(`Quiz completion saved. User now has ${users[chatId].completedQuizzes} completed quizzes`);
+                }
+            } catch (e) {
+                console.error('Error updating completed quizzes:', e);
+            }
+            
+            // Redirect to menu to reset state and ensure data consistency
+            setTimeout(() => {
+                try {
+                    // Use explicit string conversion of chatId to ensure consistency
+                    const chatIdStr = chatId.toString();
+                    console.log(`Redirecting to menu after quiz completion. ChatID: ${chatIdStr}`);
+                    bot.sendMessage(
+                        chatId,
+                        "⏱️ Returning to menu to ensure data is up to date...",
+                        {
+                            reply_markup: {
+                                inline_keyboard: [[{ text: "🔄 Open Menu", callback_data: "menu" }]]
+                            }
+                        }
+                    );
+                } catch (menuError) {
+                    console.error('Failed to redirect to menu:', menuError);
+                }
+            }, 2000); // Wait 2 seconds before redirecting
+            
         } else {
             throw new Error(`Transaction failed: ${tx.hash}`);
         }
@@ -664,6 +750,7 @@ async function updateQuizStats(signer, quizManagerAddress, userAddress, score) {
 // Update the handleReregister function
 const handleReregister = async (bot, chatId) => {
   try {
+    // Always load fresh user data
     const users = await loadUsers();
     const userWallet = users[chatId]?.address;
     
@@ -717,6 +804,10 @@ const handleReregister = async (bot, chatId) => {
     ]);
 
     if (receipt.status === 1) {
+      // Update user's registration status
+      users[chatId].isRegistered = true;
+      await saveUsers(users);
+      
       await bot.sendMessage(
         chatId, 
         '✅ Wallet registered successfully!\n' +

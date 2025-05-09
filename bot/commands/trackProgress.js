@@ -80,20 +80,33 @@ const generateProgressLink = async (userAddress) => {
 
 const handleTrackProgressCommand = async (bot, users, chatId) => {
   try {
+    // Debug the users object
+    console.log(`TrackProgress - Chat ID: ${chatId}, Users keys:`, Object.keys(users));
+    console.log(`User data exists: ${!!users[chatId]}`);
+    if (users[chatId]) {
+      console.log(`User has wallet: ${!!users[chatId].address}, Wallet: ${users[chatId].address}`);
+    }
+    
     const SIMBI_CONTRACT_ADDRESS = process.env.SIMBI_CONTRACT_ADDRESS;
     const SIMBIBADGE_NFT_CA = process.env.SIMBIBADGE_NFT_CA;
     const SIMBIQUIZMANAGER_CA = process.env.SIMBIQUIZMANAGER_CA;
     const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
 
-    const userAddress = users[chatId]?.address;
+    // First ensure we stringify the chatId for consistency
+    const userChatId = chatId.toString();
+    const userAddress = users[userChatId]?.address;
 
     if (!userAddress) {
+      console.error('No wallet address found for user', userChatId);
       return bot.sendMessage(
         chatId, 
-        '❗ You have no wallet yet. Use /start to create one.',
+        '❗ Wallet data not found. Please go back to Menu and then retry.',
         {
           reply_markup: {
-            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+            inline_keyboard: [
+              [{ text: "🔄 Reload Data", callback_data: "menu" }],
+              [{ text: "💼 Create Wallet", callback_data: "start_wallet" }]
+            ]
           }
         }
       );
@@ -185,7 +198,6 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
 🔗 *Cross-Platform Access:*
 • View on blockchain explorer: [Explorer](${explorerUrl})
 • Scan the QR code to view on mobile
-• Use /export\\_progress to receive a full report by email
 `;
 
     // Send progress information with Back to Menu button
@@ -244,18 +256,26 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
 
 const handleAchievementNFTs = async (bot, users, chatId) => {
   try {
+    console.log(`AchievementNFTs - Chat ID: ${chatId}, Users keys:`, Object.keys(users));
+    
     const SIMBIBADGE_NFT_CA = process.env.SIMBIBADGE_NFT_CA;
     const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
 
-    const userAddress = users[chatId]?.address;
+    // First ensure we stringify the chatId for consistency
+    const userChatId = chatId.toString();
+    const userAddress = users[userChatId]?.address;
 
     if (!userAddress) {
+      console.error('No wallet address found for user', userChatId);
       return bot.sendMessage(
         chatId, 
-        '❗ You have no wallet yet. Use /start to create one.',
+        '❗ Wallet data not found. Please go back to Menu and then retry. If you havent created a wallet yet, use /start_wallet',
         {
           reply_markup: {
-            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+            inline_keyboard: [
+              [{ text: "🔄 Reload Data", callback_data: "menu" }],
+              [{ text: "💼 Create Wallet", callback_data: "start_wallet" }]
+            ]
           }
         }
       );
@@ -344,15 +364,23 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
 // Handle share progress callback
 const handleShareProgress = async (bot, users, chatId) => {
   try {
-    const userAddress = users[chatId]?.address;
+    console.log(`ShareProgress - Chat ID: ${chatId}, Users keys:`, Object.keys(users));
+    
+    // First ensure we stringify the chatId for consistency
+    const userChatId = chatId.toString();
+    const userAddress = users[userChatId]?.address;
     
     if (!userAddress) {
+      console.error('No wallet address found for user', userChatId);
       return bot.sendMessage(
         chatId, 
-        '❗ You need a wallet to share progress. Use /start to create one.',
+        '❗ Wallet data not found. Please go back to Menu and then retry.',
         {
           reply_markup: {
-            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+            inline_keyboard: [
+              [{ text: "🔄 Reload Data", callback_data: "menu" }],
+              [{ text: "💼 Create Wallet", callback_data: "start_wallet" }]
+            ]
           }
         }
       );
@@ -372,9 +400,8 @@ ${explorerUrl}
 
 🧠 *Access Methods:*
 • Scan the QR code with your mobile device
-• Copy the link to view in any browser
-• Connect your wallet to the SIMBI web app
-• Import your wallet in any Web3 wallet app
+• Copy/Click on the link to view in any browser
+• Import your wallet in any Web3 wallet app (eg. MetaMask, etc...)
 
 💡 *Cross-Platform Access:*
 Your on-chain progress is stored on the blockchain and can be accessed from any device or platform!

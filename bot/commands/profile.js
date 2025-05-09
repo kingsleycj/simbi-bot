@@ -8,6 +8,12 @@ dotenv.config();
 // Path to users.json file
 const USERS_FILE_PATH = path.join(process.cwd(), 'users.json');
 
+// Define Quiz Manager ABI for contract interaction
+const QUIZ_MANAGER_ABI = [
+  "function completedQuizzes(address) view returns (uint256)",
+  "function quizScores(address) view returns (uint256)"
+];
+
 // Load users data
 async function loadUsers() {
   try {
@@ -25,11 +31,55 @@ async function loadUsers() {
   }
 }
 
+// Function to get blockchain quiz data
+async function getOnChainQuizData(userAddress) {
+  try {
+    const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
+    const QUIZ_MANAGER_ADDRESS = process.env.SIMBIQUIZMANAGER_CA;
+    
+    if (!BASE_SEPOLIA_RPC_URL || !QUIZ_MANAGER_ADDRESS) {
+      console.error('Missing environment variables for blockchain interaction');
+      return { completedQuizzes: 0, quizScore: 0 };
+    }
+    
+    const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
+    const quizManager = new ethers.Contract(
+      QUIZ_MANAGER_ADDRESS, 
+      QUIZ_MANAGER_ABI, 
+      provider
+    );
+    
+    // Get quiz data from blockchain
+    try {
+      const [completedQuizzes, quizScore] = await Promise.all([
+        quizManager.completedQuizzes(userAddress),
+        quizManager.quizScores(userAddress)
+      ]);
+      
+      return {
+        completedQuizzes: Number(completedQuizzes),
+        quizScore: Number(quizScore)
+      };
+    } catch (contractError) {
+      console.log('Contract functions not available:', contractError.message);
+      return { completedQuizzes: null, quizScore: null };
+    }
+  } catch (error) {
+    console.error('Error fetching on-chain quiz data:', error);
+    return { completedQuizzes: null, quizScore: null };
+  }
+}
+
 const handleProfileInfo = async (bot, chatId, msg = null) => {
   try {
     // Load users to get the wallet address
     const users = await loadUsers();
     const userInfo = users[chatId.toString()];
+    
+    console.log('Profile - User Info:', userInfo ? 'Found' : 'Not found');
+    if (userInfo) {
+      console.log('Profile - User has completedQuizzes:', userInfo.completedQuizzes);
+    }
 
     // Only check if user has a wallet address, not firstName
     if (!userInfo || !userInfo.address) {
@@ -54,16 +104,17 @@ const handleProfileInfo = async (bot, chatId, msg = null) => {
     
     const walletAddress = userInfo.address;
     
-    // Calculate study stats
-    let completedQuizzes = 0;
-    if (userInfo.quizzes && Array.isArray(userInfo.quizzes)) {
-      // Count completed quizzes from quiz history
-      completedQuizzes = userInfo.quizzes.filter(quiz => quiz.completed).length;
-    } else {
-      // Fallback to completedQuizzes counter
-      completedQuizzes = userInfo.completedQuizzes || 0;
-    }
+    // Fetch quiz data from blockchain for accuracy
+    const onChainData = await getOnChainQuizData(walletAddress);
+    console.log('On-chain quiz data:', onChainData);
     
+    // Use on-chain data or fall back to local data (prioritize local data)
+    const completedQuizzes = (userInfo.completedQuizzes !== undefined) ? userInfo.completedQuizzes : 
+                            (onChainData.completedQuizzes !== null ? onChainData.completedQuizzes : 0);
+                            
+    const quizScore = (onChainData.quizScore !== null) ? onChainData.quizScore : 0;
+    
+    // Get study session data
     const studySessions = userInfo.studySessions?.completed || 0;
     const totalStudyTime = calculateTotalStudyTime(userInfo);
     
@@ -83,6 +134,7 @@ const handleProfileInfo = async (bot, chatId, msg = null) => {
 
 🧠 *Study Statistics:*
 • Completed Quizzes: ${completedQuizzes}
+• Quiz Score: ${quizScore}
 • Study Sessions: ${studySessions}
 • Total Study Time: ${totalStudyTime}
 • Account Age: ${accountAge}

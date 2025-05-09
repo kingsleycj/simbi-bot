@@ -76,21 +76,72 @@ bot.setWebHook(`${WEBHOOK_URL}${webhookPath}`)
 // === Load or Initialize User Database ===
 let users = {};
 
-try {
-  const data = await fs.readFile(USERS_DB_FILE, 'utf8');
-  users = JSON.parse(data);
-} catch (error) {
-  if (error.code === 'ENOENT') {
-    await fs.writeFile(USERS_DB_FILE, JSON.stringify(users, null, 2));
-  } else {
-    console.error('Error loading users:', error);
+// Function to load users from file
+async function loadUsers() {
+  try {
+    console.log('Loading users from file...');
+    const data = await fs.readFile(USERS_DB_FILE, 'utf8');
+    if (!data.trim()) {
+      return {};
+    }
+    const parsedUsers = JSON.parse(data);
+    console.log('Users loaded successfully');
+    return parsedUsers;
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      await fs.writeFile(USERS_DB_FILE, JSON.stringify({}));
+      return {};
+    } else {
+      console.error('Error loading users:', error);
+      return {};
+    }
   }
 }
+
+// Initialize users on startup
+(async () => {
+  users = await loadUsers();
+})();
 
 // === Save Users Function ===
 async function saveUsers() {
   await fs.writeFile(USERS_DB_FILE, JSON.stringify(users, null, 2));
 }
+
+// Make sure all chat IDs are consistently strings when used for accessing user data
+// This should be placed before command handlers are defined
+
+function ensureUserConsistency() {
+  try {
+    // Convert all numeric chat IDs to strings in the users object
+    const numericKeys = Object.keys(users).filter(key => !isNaN(key));
+    
+    if (numericKeys.length > 0) {
+      console.log(`Converting ${numericKeys.length} numeric chat ID keys to strings...`);
+      
+      numericKeys.forEach(numericKey => {
+        const stringKey = numericKey.toString();
+        
+        // If the string version doesn't already exist, copy the data
+        if (!users[stringKey] && users[numericKey]) {
+          users[stringKey] = users[numericKey];
+          console.log(`Converted ${numericKey} → ${stringKey}`);
+          
+          // Clean up the numeric version to avoid duplication
+          delete users[numericKey];
+        }
+      });
+      
+      // Save the updated users object
+      saveUsers();
+    }
+  } catch (error) {
+    console.error('Error ensuring user data consistency:', error);
+  }
+}
+
+// Call this before setting up command handlers
+ensureUserConsistency();
 
 // Update command handlers
 bot.onText(/\/start/, (msg) => handleStartCommand(bot, users, msg.chat.id.toString(), msg));
@@ -113,15 +164,31 @@ bot.on('message', (msg) => {
 });
 
 // Centralized callback_query handler
-bot.on('callback_query', (query) => {
+bot.on('callback_query', async (query) => {
   bot.answerCallbackQuery(query.id).catch((error) => {
     console.error('Error answering callback query:', error);
   });
 
-  const chatId = query.message.chat.id;
+  const chatId = query.message.chat.id.toString(); // Ensure chatId is a string
   const data = query.data;
 
   console.log('Callback Query Data:', data);
+  console.log(`Callback from chatId: ${chatId} (type: ${typeof chatId})`);
+  
+  // Reload users data from file to ensure fresh data
+  try {
+    const freshUsers = await loadUsers();
+    
+    // If user exists in file but not in memory, update memory
+    if (freshUsers[chatId] && !users[chatId]) {
+      users[chatId] = freshUsers[chatId];
+      console.log('Updated in-memory user data from file for chatId:', chatId);
+    }
+  } catch (err) {
+    console.error('Error reloading users data:', err);
+  }
+  
+  console.log(`User data exists: ${!!users[chatId]}`);
 
   try {
     if (data === 'menu') {
@@ -145,6 +212,17 @@ bot.on('callback_query', (query) => {
     } else if (data === 'help') {
       console.log('Triggering handleHelpCommand...');
       handleHelpCommand(bot, chatId);
+    } else if (data === 'start_wallet') {
+      console.log('Redirecting to wallet creation...');
+      bot.sendMessage(
+        chatId,
+        "To create a new wallet, please use the /start command.",
+        {
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+          }
+        }
+      );
     } else if (data === 'reminder') {
       console.log('Triggering handleSetReminderCommand...');
       handleSetReminderCommand(bot, chatId);

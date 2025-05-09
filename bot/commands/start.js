@@ -20,16 +20,44 @@ const QUIZ_MANAGER_ABI = [
 
 export const handleStartCommand = async (bot, users, chatId, msg) => {
     try {
-        // Check if user already has a wallet
-        if (users[chatId] && users[chatId].address) {
-            const existingWallet = users[chatId];
+        // Ensure chatId is always a string for consistent lookup
+        const chatIdStr = chatId.toString();
+        
+        // Debug info for wallet check
+        console.log(`Start command received. ChatID: ${chatIdStr}`);
+        console.log(`Users object keys: ${Object.keys(users).join(', ')}`);
+        console.log(`User exists for this chatId: ${!!users[chatIdStr]}`);
+        if (users[chatIdStr]) {
+            console.log(`User has address property: ${!!users[chatIdStr].address}`);
+            if (users[chatIdStr].address) {
+                console.log(`User address: ${users[chatIdStr].address}`);
+            }
+        }
+        
+        // Check if user already has a wallet - using string version of chatId
+        if (users[chatIdStr] && users[chatIdStr].address) {
+            const existingWallet = users[chatIdStr];
             const message = 
-                '❗ You already have a wallet registered:\n\n' +
+                '❗ You already have a registered wallet:\n\n' +
                 `Address: \`${existingWallet.address}\`\n\n` +
-                '🎮 Use /menu to continue interacting with SimbiBot!\n' +
+                '🎮 Use /menu to continue interacting with SIMBI Bot!\n' +
                 '⚠️ If you need to recover your private key, please contact support.';
 
             await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+            
+            // Return to menu after showing the message to ensure data consistency
+            setTimeout(() => {
+                bot.sendMessage(
+                    chatId,
+                    "Opening menu...",
+                    {
+                        reply_markup: {
+                            inline_keyboard: [[{ text: "🔄 Open Menu", callback_data: "menu" }]]
+                        }
+                    }
+                );
+            }, 1000);
+            
             return;
         }
 
@@ -83,8 +111,8 @@ export const handleStartCommand = async (bot, users, chatId, msg) => {
         // Encrypt the private key before storing
         const encryptedPrivateKey = encryptPrivateKey(wallet.privateKey);
 
-        // Update users object
-        users[chatId] = {
+        // Update users object - use string version of chatId consistently
+        users[chatIdStr] = {
             address: wallet.address,
             privateKey: encryptedPrivateKey,
             createdAt: new Date().toISOString(),
@@ -102,6 +130,8 @@ export const handleStartCommand = async (bot, users, chatId, msg) => {
             completedQuizzes: 0
         };
 
+        console.log(`New user data saved with key: ${chatIdStr}`);
+
         // Save to users.json
         await fs.writeFile(
             path.join(process.cwd(), 'users.json'),
@@ -110,10 +140,11 @@ export const handleStartCommand = async (bot, users, chatId, msg) => {
 
         // Send welcome message with transaction info
         const welcomeMessage = 
-            '🎉 Welcome to SimbiBot!\n\n' +
+            '🎉 Welcome to SIMBI Bot!\n\n' +
             '🔐 Your new wallet has been created and registered:\n' +
             `Address: \`${wallet.address}\`\n\n` +
             '⚠️ Important: Save your private key securely!\n' +
+            '⚠️ Ensure You Import Your Private Key in Your Web3 Wallet App (eg. MetaMask, etc...)\n It wont be shown again!\n' +
             `Private Key: \`${wallet.privateKey}\`\n\n` +
             `Registration tx: https://sepolia.basescan.org/tx/${tx.hash}\n\n` +
             '🎮 Use /menu to start interacting with SimbiBot!';
