@@ -133,7 +133,8 @@ const handleProfileInfo = async (bot, chatId, msg = null) => {
     const completedQuizzes = (userInfo.completedQuizzes !== undefined) ? userInfo.completedQuizzes : 
                             (onChainData.completedQuizzes !== null ? onChainData.completedQuizzes : 0);
                             
-    const quizScore = (onChainData.quizScore !== null) ? onChainData.quizScore : 0;
+    const quizScore = (userInfo.quizScore !== undefined) ? userInfo.quizScore : 
+                      (onChainData.quizScore !== null ? onChainData.quizScore : 0);
     
     // Get study session data
     const studySessions = userInfo.studySessions?.completed || 0;
@@ -155,7 +156,7 @@ const handleProfileInfo = async (bot, chatId, msg = null) => {
 
 🧠 *Study Statistics:*
 • Completed Quizzes: ${completedQuizzes}
-• Quiz Score: ${quizScore}
+• Cumulative Quiz Score: ${quizScore}
 • Study Sessions: ${studySessions}
 • Total Study Time: ${totalStudyTime}
 • Account Age: ${accountAge}

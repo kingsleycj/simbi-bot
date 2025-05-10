@@ -20,7 +20,7 @@ const handleHelpCommand = (bot, chatId) => {
 
 *Study Session Troubleshooting:*
 If you see "You already have a study session in progress" but you're not studying:
-1. Use the "Reset Study Session" option in the main menu
+1. Use the "Reset Study Session" button directly on the Study Session screen
 2. Or type /reset_study to force reset your session
 3. Then start a new session
 
@@ -38,7 +38,7 @@ If you don't see your earned NFT badges:
 • All rewards are stored on the Base Sepolia testnet
 
 *Need More Help?*
-Contact the developer @kingsleycj for assistance
+Contact the developer @sooq_dev for assistance
 `;
 
   bot.sendMessage(chatId, helpText, { 

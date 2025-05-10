@@ -90,16 +90,16 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
       console.log(`User has wallet: ${!!users[chatId].address}, Wallet: ${users[chatId].address}`);
     }
     
-    const SIMBI_CONTRACT_ADDRESS = process.env.SIMBI_CONTRACT_ADDRESS;
-    const SIMBIBADGE_NFT_CA = process.env.SIMBIBADGE_NFT_CA;
+  const SIMBI_CONTRACT_ADDRESS = process.env.SIMBI_CONTRACT_ADDRESS;
+  const SIMBIBADGE_NFT_CA = process.env.SIMBIBADGE_NFT_CA;
     const SIMBIQUIZMANAGER_CA = process.env.SIMBIQUIZMANAGER_CA;
-    const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
+  const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
 
     // First ensure we stringify the chatId for consistency
     const userChatId = chatId.toString();
     const userAddress = users[userChatId]?.address;
 
-    if (!userAddress) {
+  if (!userAddress) {
       console.error('No wallet address found for user', userChatId);
       return bot.sendMessage(
         chatId, 
@@ -132,17 +132,17 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
     // Send initial message while fetching data
     await bot.sendMessage(chatId, '🔍 *Fetching your on-chain progress...*', { parse_mode: 'Markdown' });
 
-    const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
+  const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
     
     // Initialize contracts
-    const simbiToken = new ethers.Contract(
-      SIMBI_CONTRACT_ADDRESS,
+  const simbiToken = new ethers.Contract(
+    SIMBI_CONTRACT_ADDRESS,
       TOKEN_ABI,
-      provider
-    );
+    provider
+  );
 
-    const simbiBadgeNFT = new ethers.Contract(
-      SIMBIBADGE_NFT_CA,
+  const simbiBadgeNFT = new ethers.Contract(
+    SIMBIBADGE_NFT_CA,
       BADGE_NFT_ABI,
       provider
     );
@@ -150,8 +150,8 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
     const quizManager = new ethers.Contract(
       SIMBIQUIZMANAGER_CA,
       QUIZ_MANAGER_ABI,
-      provider
-    );
+    provider
+  );
 
     // Fetch token data
     const [
@@ -159,107 +159,198 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
       decimals,
       symbol
     ] = await Promise.all([
-      simbiToken.balanceOf(userAddress),
+    simbiToken.balanceOf(userAddress),
       simbiToken.decimals(),
       simbiToken.symbol()
     ]);
 
+    // Get quiz scores from user data
+    const completedQuizzes = users[userChatId]?.completedQuizzes || 0;
+    const quizScore = users[userChatId]?.quizScore || 0;
+    console.log('Local quiz data:', { completedQuizzes, quizScore });
+
     // Fetch quiz stats using try/catch to attempt different function names
-    let completedQuizzes = 0;
-    let quizScores = 0;
-    
+    // This section is now redundant since we're using the local data
+    // Keeping it as a fallback only for extreme cases
+    let onChainQuizStats = false;
     try {
+      // IMPROVED QUIZ DATA FETCHING: Try multiple approaches to get the data
+      console.log('Attempting to fetch quiz data from contract...');
+      
       // First try original function names
       try {
-        [completedQuizzes, quizScores] = await Promise.all([
-          quizManager.completedQuizzes(userAddress),
-          quizManager.quizScores(userAddress)
-        ]);
+        const onChainCompletedQuizzes = await quizManager.completedQuizzes(userAddress);
+        const onChainQuizScores = await quizManager.quizScores(userAddress);
+        console.log('Successfully fetched quiz stats using primary functions:', { 
+          onChainCompletedQuizzes, 
+          onChainQuizScores 
+        });
+        onChainQuizStats = true;
       } catch (error) {
-        console.log('Primary quiz stats functions not found, trying alternatives');
-        [completedQuizzes, quizScores] = await Promise.all([
-          quizManager.getUserQuizCount(userAddress),
-          quizManager.getUserScore(userAddress)
-        ]);
+        console.log('Primary quiz stats functions failed, trying alternatives:', error.message);
+        try {
+          const onChainCompletedQuizzes = await quizManager.getUserQuizCount(userAddress);
+          const onChainQuizScores = await quizManager.getUserScore(userAddress);
+          console.log('Successfully fetched quiz stats using alternative functions:', { 
+            onChainCompletedQuizzes, 
+            onChainQuizScores 
+          });
+          onChainQuizStats = true;
+        } catch (altError) {
+          throw new Error(`Both primary and alternative quiz stat fetching failed: ${altError.message}`);
+        }
       }
     } catch (error) {
-      console.log('Error fetching quiz stats:', error);
-      // Use local data as fallback
-      completedQuizzes = users[chatId]?.completedQuizzes || 0;
-      quizScores = users[chatId]?.quizScore || 0;
+      console.log('Error fetching quiz stats from contract:', error);
+      console.log('Using local quiz data as fallback:', { completedQuizzes, quizScore });
     }
 
     // Calculate formatted token balance
     const formattedBalance = ethers.formatUnits(tokenBalance, decimals);
     
-    // Get NFT badge data - IMPORTANT: Use the exact same approach as in handleAchievementNFTs
+    // COMPLETELY REVISED NFT BADGE DATA FETCHING
+    console.log('Fetching NFT badge data...');
     let bronze = 0, silver = 0, gold = 0;
     let nftCount = 0;
     let eligibleTier = null;
 
-    // First get attempt counts and balance - these should always work
     try {
-      // CRITICAL FIX: Directly use the raw attempt count values from contract
-      const attemptCounts = await simbiBadgeNFT.getAttemptCounts(userAddress);
-      bronze = attemptCounts[0]; // Get direct value from contract
-      silver = attemptCounts[1]; // Get direct value from contract
-      gold = attemptCounts[2];   // Get direct value from contract
+      // Get NFT balance first - this should always work
       nftCount = await simbiBadgeNFT.balanceOf(userAddress);
+      console.log('NFT balance retrieved successfully:', nftCount.toString());
       
-      console.log('Badge attempt counts (direct from contract):', { bronze, silver, gold });
-      console.log('NFT balance:', nftCount);
-      
-      // Try to get eligible tier separately, so one failure doesn't affect the others
+      // Get attempt counts using a more robust approach
       try {
-        eligibleTier = await simbiBadgeNFT.getEligibleTier(userAddress);
-        console.log('Eligible tier:', eligibleTier);
+        const attemptCounts = await simbiBadgeNFT.getAttemptCounts(userAddress);
+        console.log('Raw attempt counts from contract:', attemptCounts);
+        console.log('Type of attempt counts:', typeof attemptCounts);
+        console.log('Is array?', Array.isArray(attemptCounts));
+        
+        // More defensive approach to handle different return types
+        if (Array.isArray(attemptCounts)) {
+          // Handle Array return type
+          console.log('Processing array type response');
+          try {
+            bronze = Number(attemptCounts[0].toString()) || 0;
+            silver = Number(attemptCounts[1].toString()) || 0;
+            gold = Number(attemptCounts[2].toString()) || 0;
+          } catch (convError) {
+            console.error('Error converting array values:', convError);
+            bronze = 0;
+            silver = 0;
+            gold = 0;
+          }
+        } else if (attemptCounts && typeof attemptCounts === 'object') {
+          // Handle object return type with named properties or numeric indices
+          console.log('Processing object type response');
+          try {
+            // Try to access values safely
+            bronze = attemptCounts.bronze ? Number(attemptCounts.bronze.toString()) : 
+                    (attemptCounts[0] ? Number(attemptCounts[0].toString()) : 0);
+            silver = attemptCounts.silver ? Number(attemptCounts.silver.toString()) : 
+                    (attemptCounts[1] ? Number(attemptCounts[1].toString()) : 0);
+            gold = attemptCounts.gold ? Number(attemptCounts.gold.toString()) : 
+                    (attemptCounts[2] ? Number(attemptCounts[2].toString()) : 0);
+          } catch (convError) {
+            console.error('Error converting object values:', convError);
+            bronze = 0;
+            silver = 0;
+            gold = 0;
+          }
+        } else if (attemptCounts && typeof attemptCounts.toString === 'function') {
+          // Handle single return value (unlikely but possible)
+          console.log('Processing single value response');
+          try {
+            bronze = Number(attemptCounts.toString()) || 0;
+            silver = bronze;
+            gold = bronze;
+          } catch (convError) {
+            console.error('Error converting single value:', convError);
+            bronze = 0;
+            silver = 0;
+            gold = 0;
+          }
+        } else {
+          console.log('Unknown return type, setting counts to 0');
+          bronze = 0;
+          silver = 0;
+          gold = 0;
+        }
+        
+        console.log('Parsed badge attempt counts:', { bronze, silver, gold });
+      } catch (attemptError) {
+        console.error('Error getting attempt counts:', attemptError);
+        
+        // Better fallback - don't throw, use local data instead
+        const completedSessions = users[userChatId]?.studySessions?.completed || 0;
+        console.log('Using local study sessions as fallback:', completedSessions);
+        bronze = completedSessions;
+        silver = completedSessions;
+        gold = completedSessions;
+      }
+      
+      // Try to get eligible tier with proper error handling
+      try {
+        const rawEligibleTier = await simbiBadgeNFT.getEligibleTier(userAddress);
+        console.log('Successfully retrieved eligible tier:', rawEligibleTier);
+        console.log('Type of eligible tier:', typeof rawEligibleTier);
+        
+        // Convert from BigInt/Number object safely
+        try {
+          eligibleTier = Number(rawEligibleTier.toString());
+          console.log('Converted eligible tier to number:', eligibleTier);
+        } catch (convError) {
+          console.error('Error converting eligible tier:', convError);
+          // Calculate based on session counts
+          if (gold >= 70) eligibleTier = 2;
+          else if (silver >= 50) eligibleTier = 1;
+          else if (bronze >= 20) eligibleTier = 0;
+          else eligibleTier = null;
+        }
       } catch (eligibleError) {
         console.log('Error getting eligible tier:', eligibleError.message);
         
-        // IMPROVED ERROR HANDLING: Check if error message indicates "No eligible tier"
+        // "No eligible tier" is expected for new users
         if (eligibleError.message.includes('No eligible tier')) {
-          console.log('User is not eligible for any tier yet - this is expected for new users');
+          console.log('No eligible tier is an expected state for new users');
           eligibleTier = null;
         } else {
-          console.error('Unexpected error getting eligible tier:', eligibleError);
+          console.warn('Unexpected error when checking eligibility:', eligibleError);
           
-          // Calculate eligibility based on attempt counts from contract
-          if (gold >= 70) {
-            eligibleTier = 2; // Gold
-          } else if (silver >= 50) {
-            eligibleTier = 1; // Silver
-          } else if (bronze >= 20) {
-            eligibleTier = 0; // Bronze
-          } else {
-            eligibleTier = null;
-          }
+          // Calculate eligibility based on retrieved attempt counts
+          if (gold >= 70) eligibleTier = 2;
+          else if (silver >= 50) eligibleTier = 1;
+          else if (bronze >= 20) eligibleTier = 0;
+          else eligibleTier = null;
+          
+          console.log('Calculated eligibility from counts:', eligibleTier);
         }
       }
+      
     } catch (error) {
-      console.log('Error fetching badge data from contract:', error);
+      console.error('Error fetching badge data from contract:', error);
       
-      // Fallback to session count for display
+      // IMPROVED FALLBACK: Use actual completed sessions for all tiers
       const completedSessions = users[userChatId]?.studySessions?.completed || 0;
-      console.log('Falling back to local data - completed sessions:', completedSessions);
+      console.log('Using local data as fallback - completed sessions:', completedSessions);
       
-      // Single source of truth for both progress and achievements
-      bronze = completedSessions; // 1:1 ratio  
-      silver = completedSessions; // 1:1 ratio (changed from 0.7 factor)
-      gold = completedSessions;   // 1:1 ratio (changed from 0.5 factor)
+      bronze = completedSessions;
+      silver = completedSessions;
+      gold = completedSessions;
       
-      // Try to get just the NFT count
-      try {
-        nftCount = await simbiBadgeNFT.balanceOf(userAddress);
-      } catch (e) {
-        console.log('Could not fetch NFT balance:', e);
-        nftCount = 0;
-      }
+      // Recalculate eligibility with local data
+      if (completedSessions >= 70) eligibleTier = 2;
+      else if (completedSessions >= 50) eligibleTier = 1;
+      else if (completedSessions >= 20) eligibleTier = 0;
+      else eligibleTier = null;
+      
+      console.log('Calculated local eligibility:', eligibleTier);
     }
 
     // Generate shareable progress link and QR code
     const { explorerUrl, qrCodeFilePath } = await generateProgressLink(userAddress);
 
-    // Generate user's progress summary
+    // Generate user's progress summary with improved formatting
     const progressSummary = `
 📊 *SIMBI On-Chain Progress Report*
 
@@ -269,15 +360,15 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
 • ${formattedBalance} ${symbol}
 
 🏆 *Study Achievements:*
-• Total Quiz Completions: ${completedQuizzes.toString()}
+• Total Quiz Completions: ${completedQuizzes}
 • Study Sessions: ${users[userChatId]?.studySessions?.completed || 0}
-• Cumulative Quiz Score: ${quizScores.toString()}
+• Cumulative Quiz Score: ${quizScore}
 
-🏅 *NFT Badges:*
-• Total Badges: ${nftCount.toString()}
-• Bronze Tier Progress: ${bronze.toString()}/20
-• Silver Tier Progress: ${silver.toString()}/50
-• Gold Tier Progress: ${gold.toString()}/70
+🏅 *NFT Badges Progress:*
+• Total Badges Owned: ${nftCount}
+• Bronze Tier Progress: ${bronze}/20
+• Silver Tier Progress: ${silver}/50
+• Gold Tier Progress: ${gold}/70
 ${eligibleTier !== null ? `\n✨ You are eligible for the ${eligibleTier === 0 ? 'Bronze' : eligibleTier === 1 ? 'Silver' : 'Gold'} Tier Badge!` : ''}
 
 🔗 *Cross-Platform Access:*
@@ -343,14 +434,14 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
   try {
     console.log(`AchievementNFTs - Chat ID: ${chatId}, Users keys:`, Object.keys(users));
     
-    const SIMBIBADGE_NFT_CA = process.env.SIMBIBADGE_NFT_CA;
-    const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
+  const SIMBIBADGE_NFT_CA = process.env.SIMBIBADGE_NFT_CA;
+  const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
 
     // First ensure we stringify the chatId for consistency
     const userChatId = chatId.toString();
     const userAddress = users[userChatId]?.address;
 
-    if (!userAddress) {
+  if (!userAddress) {
       console.error('No wallet address found for user', userChatId);
       return bot.sendMessage(
         chatId, 
@@ -364,10 +455,10 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
           }
         }
       );
-    }
+  }
 
-    if (!SIMBIBADGE_NFT_CA) {
-      console.error('SIMBIBADGE_NFT_CA is not defined or invalid.');
+  if (!SIMBIBADGE_NFT_CA) {
+    console.error('SIMBIBADGE_NFT_CA is not defined or invalid.');
       return bot.sendMessage(
         chatId, 
         '⚠️ Configuration error: NFT contract address is missing. Please contact support.',
@@ -383,78 +474,164 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
     await bot.sendMessage(chatId, '🔍 *Fetching your achievement NFTs...*', { parse_mode: 'Markdown' });
 
     // Initialize provider
-    const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
-    const simbiBadgeNFT = new ethers.Contract(
-      SIMBIBADGE_NFT_CA,
+  const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
+  const simbiBadgeNFT = new ethers.Contract(
+    SIMBIBADGE_NFT_CA,
       BADGE_NFT_ABI,
-      provider
-    );
+    provider
+  );
 
-    // Try to get on-chain attempt counts
+    // COMPLETELY REVISED NFT BADGE DATA FETCHING for achievements
+    console.log('Fetching NFT badge achievement data...');
     let bronze = 0, silver = 0, gold = 0;
     let nftBalance = 0;
     let eligibleTier = null;
     
-    // First get attempt counts and balance - these should always work
+    // Get quiz scores from user data
+    const completedQuizzes = users[userChatId]?.completedQuizzes || 0;
+    const quizScore = users[userChatId]?.quizScore || 0;
+    console.log('Using quiz data for achievements:', { completedQuizzes, quizScore });
+
     try {
-      // CRITICAL FIX: Directly use raw attempt count values from contract
-      const attemptCounts = await simbiBadgeNFT.getAttemptCounts(userAddress);
-      bronze = attemptCounts[0]; // Get direct value from contract
-      silver = attemptCounts[1]; // Get direct value from contract
-      gold = attemptCounts[2];   // Get direct value from contract
+      // Get NFT balance first - this should always work
       nftBalance = await simbiBadgeNFT.balanceOf(userAddress);
+      console.log('NFT balance retrieved successfully:', nftBalance.toString());
       
-      console.log('Badge attempt counts (direct from contract):', { bronze, silver, gold });
-      console.log('NFT balance:', nftBalance);
+      // Get attempt counts using a more robust approach
+      try {
+        const attemptCounts = await simbiBadgeNFT.getAttemptCounts(userAddress);
+        console.log('Raw attempt counts from contract:', attemptCounts);
+        console.log('Type of attempt counts:', typeof attemptCounts);
+        console.log('Is array?', Array.isArray(attemptCounts));
+        
+        // More defensive approach to handle different return types
+        if (Array.isArray(attemptCounts)) {
+          // Handle Array return type
+          console.log('Processing array type response');
+          try {
+            bronze = Number(attemptCounts[0].toString()) || 0;
+            silver = Number(attemptCounts[1].toString()) || 0;
+            gold = Number(attemptCounts[2].toString()) || 0;
+          } catch (convError) {
+            console.error('Error converting array values:', convError);
+            bronze = 0;
+            silver = 0;
+            gold = 0;
+          }
+        } else if (attemptCounts && typeof attemptCounts === 'object') {
+          // Handle object return type with named properties or numeric indices
+          console.log('Processing object type response');
+          try {
+            // Try to access values safely
+            bronze = attemptCounts.bronze ? Number(attemptCounts.bronze.toString()) : 
+                    (attemptCounts[0] ? Number(attemptCounts[0].toString()) : 0);
+            silver = attemptCounts.silver ? Number(attemptCounts.silver.toString()) : 
+                    (attemptCounts[1] ? Number(attemptCounts[1].toString()) : 0);
+            gold = attemptCounts.gold ? Number(attemptCounts.gold.toString()) : 
+                    (attemptCounts[2] ? Number(attemptCounts[2].toString()) : 0);
+          } catch (convError) {
+            console.error('Error converting object values:', convError);
+            bronze = 0;
+            silver = 0;
+            gold = 0;
+          }
+        } else if (attemptCounts && typeof attemptCounts.toString === 'function') {
+          // Handle single return value (unlikely but possible)
+          console.log('Processing single value response');
+          try {
+            bronze = Number(attemptCounts.toString()) || 0;
+            silver = bronze;
+            gold = bronze;
+          } catch (convError) {
+            console.error('Error converting single value:', convError);
+            bronze = 0;
+            silver = 0;
+            gold = 0;
+          }
+        } else {
+          console.log('Unknown return type, setting counts to 0');
+          bronze = 0;
+          silver = 0;
+          gold = 0;
+        }
+        
+        console.log('Parsed badge attempt counts:', { bronze, silver, gold });
+      } catch (attemptError) {
+        console.error('Error getting attempt counts:', attemptError);
+        
+        // Better fallback - don't throw, use local data instead
+        const completedSessions = users[userChatId]?.studySessions?.completed || 0;
+        console.log('Using local study sessions as fallback:', completedSessions);
+        bronze = completedSessions;
+        silver = completedSessions;
+        gold = completedSessions;
+      }
       
-      // Now try to get eligible tier in a separate try/catch
+      // Try to get eligible tier with proper error handling
       try {
         eligibleTier = await simbiBadgeNFT.getEligibleTier(userAddress);
-        console.log('Eligible tier:', eligibleTier);
+        console.log('Successfully retrieved eligible tier:', eligibleTier);
+        console.log('Type of eligible tier:', typeof eligibleTier);
+        
+        // Convert from BigInt/Number object safely
+        try {
+          eligibleTier = Number(eligibleTier.toString());
+          console.log('Converted eligible tier to number:', eligibleTier);
+        } catch (convError) {
+          console.error('Error converting eligible tier:', convError);
+          // Calculate based on session counts
+          if (gold >= 70) eligibleTier = 2;
+          else if (silver >= 50) eligibleTier = 1;
+          else if (bronze >= 20) eligibleTier = 0;
+          else eligibleTier = null;
+        }
       } catch (eligibleError) {
         console.log('Error getting eligible tier:', eligibleError.message);
         
-        // IMPROVED ERROR HANDLING: Check if error message indicates "No eligible tier"
+        // "No eligible tier" is expected for new users
         if (eligibleError.message.includes('No eligible tier')) {
-          console.log('User is not eligible for any tier yet - this is expected for new users');
+          console.log('No eligible tier is an expected state for new users');
           eligibleTier = null;
         } else {
-          console.error('Unexpected error getting eligible tier:', eligibleError);
+          console.warn('Unexpected error when checking eligibility:', eligibleError);
           
-          // Calculate eligibility based on attempt counts from contract
-          if (gold >= 70) {
-            eligibleTier = 2; // Gold
-          } else if (silver >= 50) {
-            eligibleTier = 1; // Silver
-          } else if (bronze >= 20) {
-            eligibleTier = 0; // Bronze
-          } else {
-            eligibleTier = null;
-          }
+          // Calculate eligibility based on retrieved attempt counts
+          if (gold >= 70) eligibleTier = 2;
+          else if (silver >= 50) eligibleTier = 1;
+          else if (bronze >= 20) eligibleTier = 0;
+          else eligibleTier = null;
+          
+          console.log('Calculated eligibility from counts:', eligibleTier);
         }
       }
+      
     } catch (error) {
-      console.error('Error fetching NFT attempt counts from contract:', error);
+      console.error('Error fetching badge data from contract:', error);
       
-      // Fallback to local data if on-chain data is unavailable
+      // IMPROVED FALLBACK: Use actual completed sessions for all tiers
       const completedSessions = users[userChatId]?.studySessions?.completed || 0;
-      console.log('Falling back to local data - completed sessions:', completedSessions);
+      console.log('Using local data as fallback - completed sessions:', completedSessions);
       
-      // Single source of truth for both progress and achievements
-      bronze = completedSessions; // 1:1 ratio
-      silver = completedSessions; // 1:1 ratio (changed from 0.7 factor)
-      gold = completedSessions;   // 1:1 ratio (changed from 0.5 factor)
+      bronze = completedSessions;
+      silver = completedSessions;
+      gold = completedSessions;
       
-      // Try to get NFT balance in isolation
-      try {
-        nftBalance = await simbiBadgeNFT.balanceOf(userAddress);
-      } catch (e) {
-        nftBalance = 0;
-      }
+      // Recalculate eligibility with local data
+      if (completedSessions >= 70) eligibleTier = 2;
+      else if (completedSessions >= 50) eligibleTier = 1;
+      else if (completedSessions >= 20) eligibleTier = 0;
+      else eligibleTier = null;
+      
+      console.log('Calculated local eligibility:', eligibleTier);
     }
     
-    // Generate NFT achievement message
+    // Generate NFT achievement message with improved formatting
     let nftMessage = `🏅 *Your Achievement NFTs*\n\n`;
+    
+    // Add quiz stats section
+    nftMessage += `📊 *Quiz Achievements:*\n`;
+    nftMessage += `• Completed Quizzes: ${completedQuizzes}\n`;
+    nftMessage += `• Cumulative Quiz Score: ${quizScore}\n\n`;
     
     // Bronze tier progress
     nftMessage += `🥉 *Bronze Tier Badge:*\n`;
@@ -469,7 +646,7 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
     nftMessage += gold >= 70 ? `✅ Earned! (${gold}/70)\n\n` : `⏳ Progress: ${gold}/70\n\n`;
     
     // Add total NFT count
-    nftMessage += `🎖️ *Total NFT Badges:* ${nftBalance}\n\n`;
+    nftMessage += `🎖️ *Total NFT Badges Owned:* ${nftBalance}\n\n`;
     
     // Set up the response buttons
     const buttons = [];
@@ -512,7 +689,7 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
       }
     );
   } catch (error) {
-    console.error('Error fetching achievement NFTs:', error);
+      console.error('Error fetching achievement NFTs:', error);
     bot.sendMessage(
       chatId, 
       '⚠️ Failed to fetch achievement NFTs. Please try again later.',

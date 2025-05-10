@@ -213,11 +213,12 @@ const handleStudySessionCommand = async (bot, users, chatId) => {
         if (userInfo.studySessions.inProgress) {
             return bot.sendMessage(
                 chatId,
-                "⚠️ You already have a study session in progress! Focus on that one first.\n\nIf you believe this is an error, try the /menu command and then try again.",
+                "⚠️ You already have a study session in progress! Focus on that one first.\n\nIf you believe this is an error, use the Reset Session button below.",
                 {
                     reply_markup: {
                         inline_keyboard: [
                             [{ text: "❌ Cancel Study Session", callback_data: "cancel_study" }],
+                            [{ text: "🔄 Reset Study Session", callback_data: "reset_study" }],
                             [{ text: "🔙 Back to Menu", callback_data: "menu" }]
                         ]
                     }
@@ -225,7 +226,7 @@ const handleStudySessionCommand = async (bot, users, chatId) => {
             );
         }
 
-        // Offer duration options
+        // Offer duration options with the reset option
         const durationOptions = {
             reply_markup: {
                 inline_keyboard: [
@@ -233,7 +234,10 @@ const handleStudySessionCommand = async (bot, users, chatId) => {
                         { text: "25 Minutes 🍅", callback_data: "study_25" },
                         { text: "50 Minutes ⏰", callback_data: "study_50" }
                     ],
-                    [{ text: "🔙 Back to Menu", callback_data: "menu" }]
+                    [
+                        { text: "🔄 Reset Study Session", callback_data: "reset_study" },
+                        { text: "🔙 Back to Menu", callback_data: "menu" }
+                    ]
                 ]
             }
         };
