@@ -210,9 +210,23 @@ bot.on('callback_query', async (query) => {
     } else if (data === 'profile') {
       console.log('Triggering handleProfileInfo...');
       handleProfileInfo(bot, chatId, query.message);
-    } else if (data === 'help') {
+    } else if (data === 'help' || data === 'show_help') {
       console.log('Triggering handleHelpCommand...');
-      handleHelpCommand(bot, chatId);
+      try {
+        await handleHelpCommand(bot, chatId);
+        console.log('Help command executed successfully');
+      } catch (helpError) {
+        console.error('Error executing help command:', helpError);
+        bot.sendMessage(
+          chatId,
+          "⚠️ Error displaying help. Please try /help command directly.",
+          {
+            reply_markup: {
+              inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+            }
+          }
+        ).catch(msgError => console.error('Error sending help error message:', msgError));
+      }
     } else if (data === 'start_wallet') {
       console.log('Redirecting to wallet creation...');
       bot.sendMessage(

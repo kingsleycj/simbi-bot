@@ -10,7 +10,7 @@ const handleMenuCommand = (bot, chatId) => {
         ],
         [
           { text: "📄 View Profile", callback_data: 'profile' },
-          { text: "❓ Help", callback_data: 'help' }
+          { text: "❓ Help", callback_data: 'show_help' }
         ],
         [
           { text: "⏰ Set Reminder", callback_data: 'reminder' },
