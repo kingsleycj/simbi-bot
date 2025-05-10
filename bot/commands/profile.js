@@ -163,7 +163,7 @@ const handleProfileInfo = async (bot, chatId, msg = null) => {
 👛 *Wallet Information:*
 • Address: \`${walletAddress}\`
 
-💡 *Use /wallet to view detailed wallet information*
+💡 *You can Click on View Wallet to view a detailed wallet information or View Progress to view your study progress*
 `;
 
     await bot.sendMessage(

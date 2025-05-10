@@ -2,59 +2,52 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const handleHelpCommand = async (bot, chatId) => {
-  try {
-    const helpText = `
-🔍 *SIMBI Bot Help Guide*
+// This module handles the /help command in the Telegram bot
+// It provides instructions on how to use the bot and troubleshooting information for common issues
 
-*General Commands:*
-• /start - Register your wallet and get started
-• /menu - Show main menu with all options
-• /help - Display this help guide
+const handleHelpCommand = (bot, chatId) => {
+  const helpText = `
+📚 *SIMBI Bot Help Guide*
 
-*Study Tools:*
-• /study__session - Start a focused study session
-• /quiz - Take a quiz to test your knowledge
-• /reminder - Set up study reminders
+*Basic Commands:*
+• /start - Create a wallet and begin your journey
+• /menu - Show the main menu
+• /quiz - Take a quiz to earn tokens
+• /study_session - Start a focused study session
+• /track_progress - View your learning progress
+• /reset_study - Fix "in progress" study session issues
+• /help - Show this help message
 
-*Progress Tracking:*
-• /track__progress - View your on-chain progress
-• /profile - See your user profile
-• /wallet - Check your SIMBI token balance
+*Study Session Troubleshooting:*
+If you see "You already have a study session in progress" but you're not studying:
+1. Use the "Reset Study Session" option in the main menu
+2. Or type /reset_study to force reset your session
+3. Then start a new session
 
-*Tips for Success:*
-• Complete daily quizzes to earn SIMBI tokens
-• Finish study sessions to earn rewards
-• Collect NFT badges for study milestones
-• Use reminders to maintain a consistent schedule
+*NFT Badge Issues:*
+If you don't see your earned NFT badges:
+• Use the "Track Progress" option to refresh your data
+• "No eligible tier" message is normal if you haven't completed enough study sessions yet
+• Bronze tier requires 20+ sessions
+• Silver tier requires 50+ sessions
+• Gold tier requires 70+ sessions
 
-*Help & Support:*
-• For technical issues: support@simbiproject.com
-• To learn more: https://simbiproject.com
+*Wallet Connection:*
+• Your wallet is created automatically on first use
+• No need to connect external wallets
+• All rewards are stored on the Base Sepolia testnet
+
+*Need More Help?*
+Contact the developer @kingsleycj for assistance
 `;
 
-    await bot.sendMessage(
-      chatId,
-      helpText,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
-        }
-      }
-    );
-  } catch (error) {
-    console.error('Error handling help command:', error);
-    bot.sendMessage(
-      chatId,
-      "❌ An error occurred. Please try again later.",
-      {
-        reply_markup: {
-          inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
-        }
-      }
-    );
-  }
+  bot.sendMessage(chatId, helpText, { 
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+    } 
+  })
+  .catch(error => console.error('Error sending help message:', error));
 };
 
 export { handleHelpCommand }; 

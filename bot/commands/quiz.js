@@ -559,7 +559,7 @@ const handleTokenReward = async (bot, chatId, userAddress, finalScore) => {
             maxFeePerGas: tx.maxFeePerGas?.toString(),
             maxPriorityFeePerGas: tx.maxPriorityFeePerGas?.toString()
         });
-        
+
         await bot.sendMessage(
             chatId,
             `🎮 Processing reward...\nTransaction: https://sepolia.basescan.org/tx/${tx.hash}`
@@ -579,7 +579,7 @@ const handleTokenReward = async (bot, chatId, userAddress, finalScore) => {
             // Verify token transfer
             const newBalance = await tokenContract.balanceOf(userAddress);
             console.log('New balance:', ethers.formatEther(newBalance));
-            
+
             await bot.sendMessage(
                 chatId,
                 `✅ Quiz completed successfully!\n\n` +
@@ -726,7 +726,7 @@ const handleTokenReward = async (bot, chatId, userAddress, finalScore) => {
             error.message.includes('Token contract not found') ||
             error.message.includes('not the contract owner') ||
             error.message.includes('not authorized to mint tokens')) {
-            throw error;
+        throw error;
         }
     }
 };

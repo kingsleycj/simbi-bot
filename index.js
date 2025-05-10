@@ -24,7 +24,7 @@ import { handleTrackProgressCommand, handleAchievementNFTs, handleShareProgress,
 import { handleWalletInfo } from './bot/commands/wallet.js';
 import { handleProfileInfo } from './bot/commands/profile.js';
 import { handleMotivation } from './bot/commands/motivation.js';
-import { handleStudySessionCommand, handleStudySessionCallback, handleCancelStudySession } from './bot/commands/study_session.js';
+import { handleStudySessionCommand, handleStudySessionCallback, handleCancelStudySession, handleResetStudySession } from './bot/commands/study_session.js';
 import { handleHelpCommand } from './bot/commands/help.js';
 
 // Debug environment variables
@@ -152,6 +152,7 @@ bot.onText(/\/connect/, (msg) => handleConnectCommand(bot, users, msg.chat.id.to
 bot.onText(/\/reminder/, (msg) => handleSetReminderCommand(bot, msg.chat.id.toString()));
 bot.onText(/\/track_progress/, (msg) => handleTrackProgressCommand(bot, users, msg.chat.id.toString(), process.env.SIMBIBADGE_NFT_CA, process.env.BASE_SEPOLIA_RPC_URL));
 bot.onText(/\/study_session/, (msg) => handleStudySessionCommand(bot, users, msg.chat.id.toString()));
+bot.onText(/\/reset_study/, (msg) => handleResetStudySession(bot, users, msg.chat.id.toString()));
 bot.onText(/\/help/, (msg) => handleHelpCommand(bot, msg.chat.id.toString()));
 bot.onText(/\/profile/, (msg) => handleProfileInfo(bot, msg.chat.id.toString(), msg));
 
@@ -261,6 +262,9 @@ bot.on('callback_query', async (query) => {
     } else if (data === 'cancel_study') {
       console.log('Triggering handleCancelStudySession...');
       handleCancelStudySession(bot, users, chatId);
+    } else if (data === 'reset_study') {
+      console.log('Triggering handleResetStudySession...');
+      handleResetStudySession(bot, users, chatId);
     } else {
       console.log('Unknown action received:', data);
       bot.sendMessage(

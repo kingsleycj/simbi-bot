@@ -81,78 +81,6 @@ const generateProgressLink = async (userAddress) => {
   }
 };
 
-// Improved function to get badge progress safely
-const getBadgeProgressSafely = async (provider, simbiBadgeNFT, userAddress, userInfo) => {
-  console.log('Getting badge progress data safely');
-  
-  // Default fallback values
-  let result = {
-    bronze: 0,
-    silver: 0,
-    gold: 0,
-    nftCount: 0,
-    eligibleTier: null
-  };
-  
-  try {
-    // 1. First try to get the attempt counts - this should always work
-    const [bronze, silver, gold] = await simbiBadgeNFT.getAttemptCounts(userAddress);
-    result.bronze = bronze;
-    result.silver = silver;
-    result.gold = gold;
-    console.log('Success getting attempt counts:', { bronze, silver, gold });
-    
-    // 2. Try to get NFT count separately
-    try {
-      const nftCount = await simbiBadgeNFT.balanceOf(userAddress);
-      result.nftCount = nftCount;
-      console.log('Success getting NFT count:', nftCount);
-    } catch (error) {
-      console.error('Failed to get NFT count:', error);
-    }
-    
-    // 3. Try to get eligible tier in a separate try/catch
-    try {
-      const eligibleTier = await simbiBadgeNFT.getEligibleTier(userAddress);
-      result.eligibleTier = eligibleTier;
-      console.log('Success getting eligible tier:', eligibleTier);
-    } catch (error) {
-      console.log('Error getting eligible tier:', error.message);
-      
-      // Check if this is the expected "no eligible tier" error
-      if (error.message.includes('No eligible tier') || error.message.includes('execution reverted')) {
-        console.log('User is not eligible for any tier yet - this is expected for new users');
-        result.eligibleTier = null; // Set explicitly to null
-      } else {
-        console.error('Unexpected error getting eligible tier:', error);
-      }
-      
-      // Calculate eligibility based on completed sessions as fallback
-      const completedSessions = userInfo?.studySessions?.completed || 0;
-      if (completedSessions >= 70) {
-        result.eligibleTier = 2; // Gold
-      } else if (completedSessions >= 50) {
-        result.eligibleTier = 1; // Silver
-      } else if (completedSessions >= 20) {
-        result.eligibleTier = 0; // Bronze
-      }
-      console.log('Estimated eligibleTier from sessions:', result.eligibleTier);
-    }
-  } catch (error) {
-    console.error('Failed to get badge data, using fallback approach:', error);
-    
-    // Fallback to session count for display
-    const completedSessions = userInfo?.studySessions?.completed || 0;
-    
-    // Same logic for both progress and achievements
-    result.bronze = completedSessions; // 1:1 ratio  
-    result.silver = Math.floor(completedSessions * 0.7); // conservative estimate
-    result.gold = Math.floor(completedSessions * 0.5); // conservative estimate
-  }
-  
-  return result;
-};
-
 const handleTrackProgressCommand = async (bot, users, chatId) => {
   try {
     // Debug the users object
@@ -212,13 +140,13 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
       TOKEN_ABI,
       provider
     );
-    
+
     const simbiBadgeNFT = new ethers.Contract(
       SIMBIBADGE_NFT_CA,
       BADGE_NFT_ABI,
       provider
     );
-    
+
     const quizManager = new ethers.Contract(
       SIMBIQUIZMANAGER_CA,
       QUIZ_MANAGER_ABI,
@@ -264,9 +192,70 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
     // Calculate formatted token balance
     const formattedBalance = ethers.formatUnits(tokenBalance, decimals);
     
-    // Get NFT badge data using the shared function
-    const badgeData = await getBadgeProgressSafely(provider, simbiBadgeNFT, userAddress, users[userChatId]);
-    
+    // Get NFT badge data - IMPORTANT: Use the exact same approach as in handleAchievementNFTs
+    let bronze = 0, silver = 0, gold = 0;
+    let nftCount = 0;
+    let eligibleTier = null;
+
+    // First get attempt counts and balance - these should always work
+    try {
+      // CRITICAL FIX: Directly use the raw attempt count values from contract
+      const attemptCounts = await simbiBadgeNFT.getAttemptCounts(userAddress);
+      bronze = attemptCounts[0]; // Get direct value from contract
+      silver = attemptCounts[1]; // Get direct value from contract
+      gold = attemptCounts[2];   // Get direct value from contract
+      nftCount = await simbiBadgeNFT.balanceOf(userAddress);
+      
+      console.log('Badge attempt counts (direct from contract):', { bronze, silver, gold });
+      console.log('NFT balance:', nftCount);
+      
+      // Try to get eligible tier separately, so one failure doesn't affect the others
+      try {
+        eligibleTier = await simbiBadgeNFT.getEligibleTier(userAddress);
+        console.log('Eligible tier:', eligibleTier);
+      } catch (eligibleError) {
+        console.log('Error getting eligible tier:', eligibleError.message);
+        
+        // IMPROVED ERROR HANDLING: Check if error message indicates "No eligible tier"
+        if (eligibleError.message.includes('No eligible tier')) {
+          console.log('User is not eligible for any tier yet - this is expected for new users');
+          eligibleTier = null;
+        } else {
+          console.error('Unexpected error getting eligible tier:', eligibleError);
+          
+          // Calculate eligibility based on attempt counts from contract
+          if (gold >= 70) {
+            eligibleTier = 2; // Gold
+          } else if (silver >= 50) {
+            eligibleTier = 1; // Silver
+          } else if (bronze >= 20) {
+            eligibleTier = 0; // Bronze
+          } else {
+            eligibleTier = null;
+          }
+        }
+      }
+    } catch (error) {
+      console.log('Error fetching badge data from contract:', error);
+      
+      // Fallback to session count for display
+      const completedSessions = users[userChatId]?.studySessions?.completed || 0;
+      console.log('Falling back to local data - completed sessions:', completedSessions);
+      
+      // Single source of truth for both progress and achievements
+      bronze = completedSessions; // 1:1 ratio  
+      silver = completedSessions; // 1:1 ratio (changed from 0.7 factor)
+      gold = completedSessions;   // 1:1 ratio (changed from 0.5 factor)
+      
+      // Try to get just the NFT count
+      try {
+        nftCount = await simbiBadgeNFT.balanceOf(userAddress);
+      } catch (e) {
+        console.log('Could not fetch NFT balance:', e);
+        nftCount = 0;
+      }
+    }
+
     // Generate shareable progress link and QR code
     const { explorerUrl, qrCodeFilePath } = await generateProgressLink(userAddress);
 
@@ -281,14 +270,15 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
 
 🏆 *Study Achievements:*
 • Total Quiz Completions: ${completedQuizzes.toString()}
-• Study Sessions: ${users[chatId]?.studySessions?.completed || 0}
+• Study Sessions: ${users[userChatId]?.studySessions?.completed || 0}
 • Cumulative Quiz Score: ${quizScores.toString()}
 
 🏅 *NFT Badges:*
-• Total Badges: ${badgeData.nftCount.toString()}
-• Bronze Tier Progress: ${badgeData.bronze.toString()}/20
-• Silver Tier Progress: ${badgeData.silver.toString()}/50
-• Gold Tier Progress: ${badgeData.gold.toString()}/70
+• Total Badges: ${nftCount.toString()}
+• Bronze Tier Progress: ${bronze.toString()}/20
+• Silver Tier Progress: ${silver.toString()}/50
+• Gold Tier Progress: ${gold.toString()}/70
+${eligibleTier !== null ? `\n✨ You are eligible for the ${eligibleTier === 0 ? 'Bronze' : eligibleTier === 1 ? 'Silver' : 'Gold'} Tier Badge!` : ''}
 
 🔗 *Cross-Platform Access:*
 • View on blockchain explorer: [Explorer](${explorerUrl})
@@ -400,37 +390,97 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
       provider
     );
 
-    // Get NFT badge data using the shared function
-    const badgeData = await getBadgeProgressSafely(provider, simbiBadgeNFT, userAddress, users[userChatId]);
+    // Try to get on-chain attempt counts
+    let bronze = 0, silver = 0, gold = 0;
+    let nftBalance = 0;
+    let eligibleTier = null;
+    
+    // First get attempt counts and balance - these should always work
+    try {
+      // CRITICAL FIX: Directly use raw attempt count values from contract
+      const attemptCounts = await simbiBadgeNFT.getAttemptCounts(userAddress);
+      bronze = attemptCounts[0]; // Get direct value from contract
+      silver = attemptCounts[1]; // Get direct value from contract
+      gold = attemptCounts[2];   // Get direct value from contract
+      nftBalance = await simbiBadgeNFT.balanceOf(userAddress);
+      
+      console.log('Badge attempt counts (direct from contract):', { bronze, silver, gold });
+      console.log('NFT balance:', nftBalance);
+      
+      // Now try to get eligible tier in a separate try/catch
+      try {
+        eligibleTier = await simbiBadgeNFT.getEligibleTier(userAddress);
+        console.log('Eligible tier:', eligibleTier);
+      } catch (eligibleError) {
+        console.log('Error getting eligible tier:', eligibleError.message);
+        
+        // IMPROVED ERROR HANDLING: Check if error message indicates "No eligible tier"
+        if (eligibleError.message.includes('No eligible tier')) {
+          console.log('User is not eligible for any tier yet - this is expected for new users');
+          eligibleTier = null;
+        } else {
+          console.error('Unexpected error getting eligible tier:', eligibleError);
+          
+          // Calculate eligibility based on attempt counts from contract
+          if (gold >= 70) {
+            eligibleTier = 2; // Gold
+          } else if (silver >= 50) {
+            eligibleTier = 1; // Silver
+          } else if (bronze >= 20) {
+            eligibleTier = 0; // Bronze
+          } else {
+            eligibleTier = null;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching NFT attempt counts from contract:', error);
+      
+      // Fallback to local data if on-chain data is unavailable
+      const completedSessions = users[userChatId]?.studySessions?.completed || 0;
+      console.log('Falling back to local data - completed sessions:', completedSessions);
+      
+      // Single source of truth for both progress and achievements
+      bronze = completedSessions; // 1:1 ratio
+      silver = completedSessions; // 1:1 ratio (changed from 0.7 factor)
+      gold = completedSessions;   // 1:1 ratio (changed from 0.5 factor)
+      
+      // Try to get NFT balance in isolation
+      try {
+        nftBalance = await simbiBadgeNFT.balanceOf(userAddress);
+      } catch (e) {
+        nftBalance = 0;
+      }
+    }
     
     // Generate NFT achievement message
     let nftMessage = `🏅 *Your Achievement NFTs*\n\n`;
     
     // Bronze tier progress
     nftMessage += `🥉 *Bronze Tier Badge:*\n`;
-    nftMessage += badgeData.bronze >= 20 ? `✅ Earned! (${badgeData.bronze}/20)\n\n` : `⏳ Progress: ${badgeData.bronze}/20\n\n`;
+    nftMessage += bronze >= 20 ? `✅ Earned! (${bronze}/20)\n\n` : `⏳ Progress: ${bronze}/20\n\n`;
     
     // Silver tier progress
     nftMessage += `🥈 *Silver Tier Badge:*\n`;
-    nftMessage += badgeData.silver >= 50 ? `✅ Earned! (${badgeData.silver}/50)\n\n` : `⏳ Progress: ${badgeData.silver}/50\n\n`;
+    nftMessage += silver >= 50 ? `✅ Earned! (${silver}/50)\n\n` : `⏳ Progress: ${silver}/50\n\n`;
     
     // Gold tier progress
     nftMessage += `🥇 *Gold Tier Badge:*\n`;
-    nftMessage += badgeData.gold >= 70 ? `✅ Earned! (${badgeData.gold}/70)\n\n` : `⏳ Progress: ${badgeData.gold}/70\n\n`;
+    nftMessage += gold >= 70 ? `✅ Earned! (${gold}/70)\n\n` : `⏳ Progress: ${gold}/70\n\n`;
     
     // Add total NFT count
-    nftMessage += `🎖️ *Total NFT Badges:* ${badgeData.nftCount}\n\n`;
+    nftMessage += `🎖️ *Total NFT Badges:* ${nftBalance}\n\n`;
     
     // Set up the response buttons
     const buttons = [];
     
     // Add Mint NFT Button if eligible for any tier
-    if (badgeData.eligibleTier !== null) {
+    if (eligibleTier !== null) {
       // Find the highest eligible tier
       let tierName;
-      if (badgeData.eligibleTier === 2) {
+      if (eligibleTier === 2) {
         tierName = "Gold";
-      } else if (badgeData.eligibleTier === 1) {
+      } else if (eligibleTier === 1) {
         tierName = "Silver";
       } else {
         tierName = "Bronze";
@@ -439,7 +489,7 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
       nftMessage += `✨ *Achievement Unlocked!* You are eligible for the ${tierName} Tier Badge!\n\n`;
       
       // Add mint button for eligible tier
-      buttons.push([{ text: `🎖️ Mint ${tierName} NFT Badge`, callback_data: `mint_badge_${badgeData.eligibleTier}` }]);
+      buttons.push([{ text: `🎖️ Mint ${tierName} NFT Badge`, callback_data: `mint_badge_${eligibleTier}` }]);
     } else {
       nftMessage += `🔍 Complete more study sessions and quizzes to earn badges!`;
     }

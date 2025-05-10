@@ -10,61 +10,6 @@ dotenv.config();
 // Path to users.json file
 const USERS_FILE_PATH = path.join(process.cwd(), 'users.json');
 
-// Function to aggressively reset stale study sessions
-const resetStaleStudySession = async (users, chatId) => {
-    console.log('Checking for stale study session to reset for user:', chatId);
-    // Get fresh user data first
-    const freshUsers = await loadUsers();
-    const currentUserInfo = freshUsers[chatId] || users[chatId];
-    
-    // Check if user has studySessions and inProgress is true
-    if (currentUserInfo && currentUserInfo.studySessions && currentUserInfo.studySessions.inProgress) {
-        console.log('Found study session marked as in-progress, checking if stale...');
-        
-        // Calculate expected end time
-        const sessionStartTime = currentUserInfo.studySessions.startTime || 0;
-        const sessionDuration = currentUserInfo.studySessions.duration || 25;
-        const expectedEndTime = sessionStartTime + (sessionDuration * 60 * 1000);
-        const currentTime = Date.now();
-        
-        // Consider a session stale if:
-        // 1. It started more than 3 hours ago (regardless of duration) or
-        // 2. It should have ended at least 1 minute ago
-        const isStale = (currentTime > expectedEndTime + (1 * 60 * 1000)) || 
-                      (currentTime > sessionStartTime + (3 * 60 * 60 * 1000));
-        
-        if (isStale) {
-            console.log('STALE SESSION DETECTED - Resetting inProgress flag');
-            // Update the freshUsers object
-            freshUsers[chatId].studySessions.inProgress = false;
-            await fs.writeFile(USERS_FILE_PATH, JSON.stringify(freshUsers, null, 2));
-            
-            // Also update in-memory users
-            if (users[chatId] && users[chatId].studySessions) {
-                users[chatId].studySessions.inProgress = false;
-            }
-            
-            console.log('Study session reset complete. Session details:', {
-                startTime: new Date(sessionStartTime).toISOString(),
-                currentTime: new Date(currentTime).toISOString(),
-                expectedEndTime: new Date(expectedEndTime).toISOString(),
-                durationMinutes: sessionDuration,
-                minutesSinceEnd: Math.floor((currentTime - expectedEndTime) / 60000),
-                hoursSinceStart: Math.floor((currentTime - sessionStartTime) / 3600000)
-            });
-            
-            return true; // Session was reset
-        } else {
-            console.log('Study session still active:', {
-                startTime: new Date(sessionStartTime).toISOString(), 
-                minutesRemaining: Math.floor((expectedEndTime - currentTime) / 60000)
-            });
-            return false; // Session is still active
-        }
-    }
-    return false; // No session to reset
-};
-
 // Contract ABIs
 const QUIZ_MANAGER_ABI = [
     "function completeQuiz(address user, uint256 score) external",
@@ -189,18 +134,18 @@ const handleStudySessionCommand = async (bot, users, chatId) => {
         const freshUsers = await loadUsers();
         console.log('Fresh users keys:', Object.keys(freshUsers));
         
-        // Update in-memory users with fresh data
-        if (freshUsers[chatId] && !users[chatId]) {
-            users[chatId] = freshUsers[chatId];
+        // Ensure consistent string format for chatId
+        const chatIdStr = chatId.toString();
+        
+        // CRITICAL FIX: Always update in-memory users with fresh data
+        if (freshUsers[chatIdStr]) {
+            users[chatIdStr] = freshUsers[chatIdStr];
         }
         
         console.log('Updated users keys:', Object.keys(users));
         
-        // Ensure consistent string format for chatId
-        const chatIdStr = chatId.toString();
-        
-        // Check if user exists in users object
-        const userInfo = users[chatIdStr] || freshUsers[chatIdStr];
+        // Get user info using consistent chatId
+        const userInfo = users[chatIdStr];
         console.log('User exists:', !!userInfo);
         
         // Check if user has a wallet
@@ -219,15 +164,65 @@ const handleStudySessionCommand = async (bot, users, chatId) => {
         
         console.log('User wallet address:', userInfo.address);
 
-        // Check for and reset stale study sessions using the central function
-        await resetStaleStudySession(users, chatIdStr);
+        // IMPROVED RESET LOGIC: Check for and reset stale study sessions
+        if (userInfo.studySessions && userInfo.studySessions.inProgress) {
+            console.log('Detected in-progress study session, checking if stale...');
+            const currentTime = Date.now();
+            const sessionStartTime = userInfo.studySessions.startTime || 0;
+            const sessionDuration = userInfo.studySessions.duration || 2;
+            const expectedEndTime = sessionStartTime + (sessionDuration * 60 * 1000);
+            
+            // Check if the session should have ended by now (add a 2 minute buffer)
+            if (currentTime > expectedEndTime + (2 * 60 * 1000)) {
+                console.log('Study session is stale, resetting inProgress flag');
+                userInfo.studySessions.inProgress = false;
+                
+                // CRITICAL FIX: Save this change immediately
+                await saveUsers(users);
+                
+                // Log for debugging
+                console.log('Study session reset. Session details:', {
+                    startTime: new Date(sessionStartTime).toISOString(),
+                    currentTime: new Date(currentTime).toISOString(),
+                    expectedEndTime: new Date(expectedEndTime).toISOString(),
+                    durationMinutes: sessionDuration
+                });
+            } else {
+                console.log('Study session is still active:', {
+                    startTime: new Date(sessionStartTime).toISOString(),
+                    currentTime: new Date(currentTime).toISOString(),
+                    expectedEndTime: new Date(expectedEndTime).toISOString(),
+                    minutesRemaining: Math.floor((expectedEndTime - currentTime) / 60000)
+                });
+            }
+        }
 
         // Initialize study sessions if needed
         if (!userInfo.studySessions) {
             userInfo.studySessions = {
                 completed: 0,
-                inProgress: false
+                inProgress: false,
+                history: []
             };
+            
+            // IMPORTANT: Save this initialization
+            await saveUsers(users);
+        }
+
+        // Double check if session is still in progress after reset
+        if (userInfo.studySessions.inProgress) {
+            return bot.sendMessage(
+                chatId,
+                "⚠️ You already have a study session in progress! Focus on that one first.\n\nIf you believe this is an error, try the /menu command and then try again.",
+                {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: "❌ Cancel Study Session", callback_data: "cancel_study" }],
+                            [{ text: "🔙 Back to Menu", callback_data: "menu" }]
+                        ]
+                    }
+                }
+            );
         }
 
         // Offer duration options
@@ -291,17 +286,42 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
         const freshUsers = await loadUsers();
         console.log('Fresh users keys:', Object.keys(freshUsers));
         
-        // Update in-memory users with fresh data
-        if (freshUsers[chatId] && !users[chatId]) {
-            users[chatId] = freshUsers[chatId];
+        // Always use string version of chatId
+        const chatIdStr = chatId.toString();
+        
+        // Update in-memory users with fresh data - CRITICAL FIX
+        if (freshUsers[chatIdStr]) {
+            // Always update the in-memory user data with the latest from file
+            users[chatIdStr] = freshUsers[chatIdStr];
         }
         
-        // Ensure consistent string format for chatId
-        const chatIdStr = chatId.toString();
         console.log('User exists:', users[chatIdStr] ? 'Yes' : 'No');
         
-        // Force reset any stale sessions using the central function
-        await resetStaleStudySession(users, chatIdStr);
+        // Check for and forcibly reset any stale sessions - IMPROVED DETECTION
+        if (users[chatIdStr] && users[chatIdStr].studySessions && users[chatIdStr].studySessions.inProgress) {
+            console.log('Found potential stale session, checking timestamp...');
+            const sessionStartTime = users[chatIdStr].studySessions.startTime || 0;
+            const sessionDuration = users[chatIdStr].studySessions.duration || 2;
+            const expectedEndTime = sessionStartTime + (sessionDuration * 60 * 1000);
+            const currentTime = Date.now();
+            
+            // If the session should have completed over 2 minutes ago, force reset
+            if (currentTime > expectedEndTime + (2 * 60 * 1000)) {
+                console.log('FORCE RESETTING stale study session for user', chatIdStr);
+                users[chatIdStr].studySessions.inProgress = false;
+                
+                // Critical fix: Save this change to both memory AND file
+                await saveUsers(users);
+                
+                console.log('Session forcibly reset. Session details:', {
+                    startTime: new Date(sessionStartTime).toISOString(),
+                    duration: sessionDuration,
+                    expectedEndTime: new Date(expectedEndTime).toISOString(),
+                    currentTime: new Date(currentTime).toISOString(),
+                    minutesSinceEnd: Math.floor((currentTime - expectedEndTime) / 60000)
+                });
+            }
+        }
         
         if (users[chatIdStr]) {
             console.log('User address exists:', users[chatIdStr].address ? 'Yes' : 'No');
@@ -309,7 +329,7 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
         }
         
         // Check if the user has a valid wallet
-        const userInfo = users[chatIdStr] || freshUsers[chatIdStr];
+        const userInfo = users[chatIdStr];
         if (!userInfo || !userInfo.address) {
             return bot.sendMessage(
                 chatId,
@@ -335,7 +355,7 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
             };
         }
 
-        // Check if session is already in progress (only after checking for stale sessions)
+        // Additional check for inProgress after potential reset
         if (userInfo.studySessions.inProgress) {
             return bot.sendMessage(
                 chatId,
@@ -399,91 +419,84 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
             messageTimers.forEach(timer => clearTimeout(timer));
             
             try {
-                // Check if session is still marked as in progress
+                // IMPORTANT FIX: Always reload the latest user data before updating
                 const currentUsers = await loadUsers();
-                const currentUserInfo = currentUsers[chatId.toString()];
+                const currentUserInfo = currentUsers[chatIdStr];
                 
-                // Force reset inProgress flag regardless of current state
-                // This ensures the flag is always reset even if there are race conditions
-                if (currentUserInfo && currentUserInfo.studySessions) {
-                    console.log('Force resetting inProgress flag for user:', chatId.toString());
+                if (currentUserInfo && currentUserInfo.studySessions && currentUserInfo.studySessions.inProgress) {
+                    // Mark session as completed
                     currentUserInfo.studySessions.inProgress = false;
+                    currentUserInfo.studySessions.completed += 1;
                     
-                    // Also immediately update the in-memory version
-                    if (users[chatId.toString()] && users[chatId.toString()].studySessions) {
-                        users[chatId.toString()].studySessions.inProgress = false;
+                    // Add session to history for proper time tracking
+                    const sessionDuration = data === "study_25" ? 25 : 50; // Use actual intended duration for stats
+                    const sessionEndTime = Date.now();
+                    const sessionStartTime = currentUserInfo.studySessions.startTime;
+                    
+                    // Initialize history array if it doesn't exist
+                    if (!currentUserInfo.studySessions.history) {
+                        currentUserInfo.studySessions.history = [];
                     }
                     
-                    // Record completion only if it was previously in progress
-                    if (currentUserInfo.studySessions.inProgress === true) {
-                        currentUserInfo.studySessions.completed += 1;
-                        
-                        // Add session to history for proper time tracking
-                        const sessionDuration = data === "study_25" ? 25 : 50; // Use actual intended duration for stats
-                        const sessionEndTime = Date.now();
-                        const sessionStartTime = currentUserInfo.studySessions.startTime;
-                        
-                        // Initialize history array if it doesn't exist
-                        if (!currentUserInfo.studySessions.history) {
-                            currentUserInfo.studySessions.history = [];
-                        }
-                        
-                        // Add this session to history
-                        currentUserInfo.studySessions.history.push({
-                            startTime: sessionStartTime,
-                            endTime: sessionEndTime,
-                            duration: sessionDuration,
-                            type: data === "study_25" ? "pomodoro" : "extended"
-                        });
-                    }
+                    // Add this session to history
+                    currentUserInfo.studySessions.history.push({
+                        startTime: sessionStartTime,
+                        endTime: sessionEndTime,
+                        duration: sessionDuration,
+                        type: data === "study_25" ? "pomodoro" : "extended"
+                    });
                     
-                    // Save immediately to prevent race conditions
+                    // Save user data to file
                     await saveUsers(currentUsers);
-                    console.log('Study session completion saved, inProgress reset to false');
-                }
-                
-                // Send completion message
-                await bot.sendMessage(
-                    chatId,
-                    `🎉 Congratulations! You've completed a ${data === "study_25" ? "25" : "50"}-minute study session!\n\nProcessing your reward...`
-                );
-                
-                // Reward the user with tokens
-                await rewardStudySession(bot, chatId, (currentUserInfo || users[chatId.toString()]).address);
-                
-                // Check if user has reached a badge milestone
-                await checkBadgeMilestone(bot, chatId, (currentUserInfo || users[chatId.toString()]).address, 
-                    (currentUserInfo || users[chatId.toString()]).studySessions.completed);
-                
-                // Send options for next actions
-                await bot.sendMessage(
-                    chatId,
-                    "What would you like to do next?",
-                    {
-                        reply_markup: {
-                            inline_keyboard: [
-                                [
-                                    { text: "📚 Start Another Session", callback_data: "study_session" },
-                                    { text: "📊 View Progress", callback_data: "progress" }
-                                ],
-                                [{ text: "🔙 Back to Menu", callback_data: "menu" }]
-                            ]
-                        }
+                    
+                    // CRITICAL FIX: Update the in-memory users object as well
+                    users[chatIdStr] = currentUsers[chatIdStr];
+                    
+                    // Send completion message
+                    await bot.sendMessage(
+                        chatId,
+                        `🎉 Congratulations! You've completed a ${data === "study_25" ? "25" : "50"}-minute study session!\n\nProcessing your reward...`
+                    );
+                    
+                    // IMPROVED ORDER: Record session completion first for badge tracking
+                    try {
+                        await checkBadgeMilestone(bot, chatId, currentUserInfo.address, currentUserInfo.studySessions.completed);
+                    } catch (badgeError) {
+                        console.error('Error checking badge milestone:', badgeError);
+                        // Don't stop execution if badge check fails
                     }
-                );
+                    
+                    // Then reward tokens
+                    try {
+                        await rewardStudySession(bot, chatId, currentUserInfo.address);
+                    } catch (rewardError) {
+                        console.error('Error rewarding study session:', rewardError);
+                        // Send a message if reward fails
+                        await bot.sendMessage(
+                            chatId,
+                            "⚠️ There was an issue processing your token reward, but your progress has been saved."
+                        );
+                    }
+                    
+                    // Send options for next actions
+                    await bot.sendMessage(
+                        chatId,
+                        "What would you like to do next?",
+                        {
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [
+                                        { text: "📚 Start Another Session", callback_data: "study_session" },
+                                        { text: "📊 View Progress", callback_data: "progress" }
+                                    ],
+                                    [{ text: "🔙 Back to Menu", callback_data: "menu" }]
+                                ]
+                            }
+                        }
+                    );
+                }
             } catch (error) {
                 console.error('Error completing study session:', error);
-                // Even if an error occurs, try to reset the inProgress flag
-                try {
-                    if (users[chatId.toString()] && users[chatId.toString()].studySessions) {
-                        users[chatId.toString()].studySessions.inProgress = false;
-                        await saveUsers(users);
-                        console.log('Emergency inProgress flag reset after error');
-                    }
-                } catch (saveError) {
-                    console.error('Failed to reset inProgress flag after error:', saveError);
-                }
-                
                 await bot.sendMessage(
                     chatId,
                     "❌ There was an error completing your study session. Your progress has been saved, but rewards couldn't be processed.",
@@ -516,14 +529,15 @@ const handleCancelStudySession = async (bot, users, chatId) => {
         // Always load fresh user data
         const freshUsers = await loadUsers();
         
-        // Update in-memory users with fresh data
-        if (freshUsers[chatId] && !users[chatId]) {
-            users[chatId] = freshUsers[chatId];
-        }
-        
         // Ensure consistent string format for chatId
         const chatIdStr = chatId.toString();
-        const userInfo = users[chatIdStr] || freshUsers[chatIdStr];
+        
+        // CRITICAL FIX: Always update in-memory users with fresh data
+        if (freshUsers[chatIdStr]) {
+            users[chatIdStr] = freshUsers[chatIdStr];
+        }
+        
+        const userInfo = users[chatIdStr];
         
         if (!userInfo || !userInfo.studySessions || !userInfo.studySessions.inProgress) {
             return bot.sendMessage(
@@ -817,92 +831,242 @@ const checkBadgeMilestone = async (bot, chatId, userAddress, completedSessions) 
         );
         
         // Get current attempt counts
-        const [bronze, silver, gold] = await badgeNFT.getAttemptCounts(userAddress);
-        console.log('Badge attempts:', { bronze, silver, gold });
+        let bronze = 0, silver = 0, gold = 0;
+        let isEligible = false;
+        let contractEligibleTier = null;
         
-        // Update the attempt count in the contract
+        try {
+            [bronze, silver, gold] = await badgeNFT.getAttemptCounts(userAddress);
+            console.log('Badge attempts:', { bronze, silver, gold });
+            
+            // Try to check if eligible via contract
+            try {
+                contractEligibleTier = await badgeNFT.getEligibleTier(userAddress);
+                console.log('Eligible tier from contract:', contractEligibleTier);
+                
+                // Check if user is eligible for the calculated tier or better
+                isEligible = contractEligibleTier >= badgeTier;
+            } catch (eligibleError) {
+                console.log('Error checking eligible tier:', eligibleError.message);
+                
+                // IMPROVED ERROR HANDLING: "No eligible tier" is expected for new users
+                if (eligibleError.message.includes('No eligible tier')) {
+                    console.log('Contract reports user is not eligible for any tier yet');
+                    isEligible = false;
+                } else {
+                    // Fall back to our local calculation
+                    console.log('Using local calculation for eligibility');
+                    isEligible = true; // We already calculated badgeTier based on sessions
+                }
+            }
+        } catch (error) {
+            console.error('Error getting attempt counts:', error);
+            // Still proceed with minting attempt if we calculated eligibility locally
+            isEligible = true; 
+        }
+        
+        // Update the attempt count in the contract regardless of eligibility
         try {
             // Record attempts based on session completion (score of 100 for all completed sessions)
+            console.log('Recording study attempt to badge contract...');
             const recordTx = await badgeNFT.recordQuizAttempt(
                 userAddress,
-                100,
+                100, // Perfect score for study sessions
                 {
-                    gasLimit: 200000n
+                    gasLimit: 300000n // Increased gas limit to ensure transaction completes
                 }
             );
             
-            await recordTx.wait(1);
-            console.log('Recorded attempt:', recordTx.hash);
+            console.log('Attempt record transaction sent:', recordTx.hash);
+            const recordReceipt = await recordTx.wait(1);
+            console.log('Successfully recorded attempt, tx status:', recordReceipt.status);
+            
+            // Re-check attempt counts after recording
+            try {
+                const updatedCounts = await badgeNFT.getAttemptCounts(userAddress);
+                console.log('Updated badge attempt counts:', { 
+                    bronze: updatedCounts[0], 
+                    silver: updatedCounts[1], 
+                    gold: updatedCounts[2] 
+                });
+            } catch (err) {
+                console.log('Could not verify updated counts:', err.message);
+            }
         } catch (error) {
             console.error('Error recording attempt:', error);
             // Continue to try minting the badge
         }
         
-        // Try to mint the badge if eligible
-        try {
-            const mintTx = await badgeNFT.safeMint(
-                userAddress,
-                badgeTier,
-                {
-                    gasLimit: 300000n
-                }
-            );
-            
-            await bot.sendMessage(
-                chatId,
-                `🏆 Processing your ${tierName} Tier NFT badge...`
-            );
-            
-            const receipt = await mintTx.wait(1);
-            
-            if (receipt.status === 1) {
-                // Get the badge URI to display the image
-                const baseUri = await badgeNFT.getTierBaseURI(badgeTier);
-                console.log('Badge URI:', baseUri);
-                
-                // Extract IPFS URI 
-                const ipfsUri = baseUri.replace('ipfs://', 'https://ipfs.io/ipfs/');
-                
-                // Send success message with badge info
-                await bot.sendMessage(
-                    chatId,
-                    `🎖️ Congratulations! You've earned the ${tierName} Tier Badge!\n\n` +
-                    `This NFT has been minted to your wallet to commemorate your dedication to learning.\n\n` +
-                    `Transaction: https://sepolia.basescan.org/tx/${receipt.hash}`
+        // Only try to mint the badge if user is eligible
+        if (isEligible) {
+            try {
+                const mintTx = await badgeNFT.safeMint(
+                    userAddress,
+                    badgeTier,
+                    {
+                        gasLimit: 300000n
+                    }
                 );
                 
-                // Send the badge image
-                try {
-                    await bot.sendPhoto(chatId, ipfsUri);
-                } catch (imageError) {
-                    console.error('Error sending badge image:', imageError);
-                    // Fallback to text message if image sending fails
+                await bot.sendMessage(
+                    chatId,
+                    `🏆 Processing your ${tierName} Tier NFT badge...`
+                );
+                
+                const receipt = await mintTx.wait(1);
+                
+                if (receipt.status === 1) {
+                    // Get the badge URI to display the image
+                    const baseUri = await badgeNFT.getTierBaseURI(badgeTier);
+                    console.log('Badge URI:', baseUri);
+                    
+                    // Extract IPFS URI 
+                    const ipfsUri = baseUri.replace('ipfs://', 'https://ipfs.io/ipfs/');
+                    
+                    // Send success message with badge info
                     await bot.sendMessage(
                         chatId,
-                        `View your badge at: ${ipfsUri}`
+                        `🎖️ Congratulations! You've earned the ${tierName} Tier Badge!\n\n` +
+                        `This NFT has been minted to your wallet to commemorate your dedication to learning.\n\n` +
+                        `Transaction: https://sepolia.basescan.org/tx/${receipt.hash}`
+                    );
+                    
+                    // Send the badge image
+                    try {
+                        await bot.sendPhoto(chatId, ipfsUri);
+                    } catch (imageError) {
+                        console.error('Error sending badge image:', imageError);
+                        // Fallback to text message if image sending fails
+                        await bot.sendMessage(
+                            chatId,
+                            `View your badge at: ${ipfsUri}`
+                        );
+                    }
+                }
+            } catch (error) {
+                console.error('Error minting badge:', error);
+                
+                // Check if the error is because user already has this badge
+                if (error.message.includes('already has badge')) {
+                    await bot.sendMessage(
+                        chatId,
+                        `🏆 You've already earned the ${tierName} Tier Badge! Keep studying to reach the next tier!`
+                    );
+                } else {
+                    await bot.sendMessage(
+                        chatId,
+                        `ℹ️ You've reached the milestone for a ${tierName} Tier Badge, but there was an issue minting it. The system will try again later.`
                     );
                 }
             }
-        } catch (error) {
-            console.error('Error minting badge:', error);
-            
-            // Check if the error is because user already has this badge
-            if (error.message.includes('already has badge')) {
-                await bot.sendMessage(
-                    chatId,
-                    `🏆 You've already earned the ${tierName} Tier Badge! Keep studying to reach the next tier!`
-                );
-            } else {
-                await bot.sendMessage(
-                    chatId,
-                    `ℹ️ You've reached the milestone for a ${tierName} Tier Badge, but there was an issue minting it. The system will try again later.`
-                );
-            }
+        } else {
+            console.log(`User not eligible for ${tierName} tier according to contract checks.`);
         }
     } catch (error) {
         console.error('Error checking badge milestone:', error);
     }
 };
 
+// Handle reset study session - new function to help users with stuck sessions
+const handleResetStudySession = async (bot, users, chatId) => {
+    try {
+        console.log('\n=== Reset Study Session Command ===');
+        console.log('Chat ID:', chatId);
+        
+        // Always load fresh user data
+        const freshUsers = await loadUsers();
+        
+        // Ensure consistent string format for chatId
+        const chatIdStr = chatId.toString();
+        
+        // Update in-memory users with fresh data
+        if (freshUsers[chatIdStr]) {
+            users[chatIdStr] = freshUsers[chatIdStr];
+        }
+        
+        // Get user info from memory
+        const userInfo = users[chatIdStr];
+        
+        if (!userInfo) {
+            return bot.sendMessage(
+                chatId,
+                "❌ No user data found. Please use the /menu command first.",
+                {
+                    reply_markup: {
+                        inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+                    }
+                }
+            );
+        }
+        
+        // Initialize study sessions if needed
+        if (!userInfo.studySessions) {
+            userInfo.studySessions = {
+                completed: 0,
+                inProgress: false,
+                history: []
+            };
+            await saveUsers(users);
+            
+            return bot.sendMessage(
+                chatId,
+                "✅ No study session in progress. You can start a new one now.",
+                {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: "📚 Start Study Session", callback_data: "study_session" }],
+                            [{ text: "🔙 Back to Menu", callback_data: "menu" }]
+                        ]
+                    }
+                }
+            );
+        }
+        
+        // Check if there is a study session in progress
+        if (!userInfo.studySessions.inProgress) {
+            return bot.sendMessage(
+                chatId,
+                "✅ No study session in progress. You can start a new one now.",
+                {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: "📚 Start Study Session", callback_data: "study_session" }],
+                            [{ text: "🔙 Back to Menu", callback_data: "menu" }]
+                        ]
+                    }
+                }
+            );
+        }
+        
+        // Reset the in-progress session
+        userInfo.studySessions.inProgress = false;
+        await saveUsers(users);
+        
+        return bot.sendMessage(
+            chatId,
+            "✅ Your study session has been reset successfully. You can now start a new one.",
+            {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "📚 Start Study Session", callback_data: "study_session" }],
+                        [{ text: "🔙 Back to Menu", callback_data: "menu" }]
+                    ]
+                }
+            }
+        );
+    } catch (error) {
+        console.error('Error resetting study session:', error);
+        bot.sendMessage(
+            chatId, 
+            "❌ Sorry, something went wrong. Please try again later.",
+            {
+                reply_markup: {
+                    inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+                }
+            }
+        );
+    }
+};
+
 // Export functions
-export { handleStudySessionCommand, handleStudySessionCallback, handleCancelStudySession }; 
+export { handleStudySessionCommand, handleStudySessionCallback, handleCancelStudySession, handleResetStudySession }; 

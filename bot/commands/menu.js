@@ -21,7 +21,8 @@ const handleMenuCommand = (bot, chatId) => {
           { text: "💡 Motivation", callback_data: 'motivation' }
         ],
         [
-          { text: "📚 Study Session", callback_data: 'study_session' }
+          { text: "📚 Study Session", callback_data: 'study_session' },
+          { text: "🔄 Reset Study Session", callback_data: 'reset_study' }
         ]
       ]
     }
