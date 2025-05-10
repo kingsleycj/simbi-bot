@@ -10,6 +10,61 @@ dotenv.config();
 // Path to users.json file
 const USERS_FILE_PATH = path.join(process.cwd(), 'users.json');
 
+// Function to aggressively reset stale study sessions
+const resetStaleStudySession = async (users, chatId) => {
+    console.log('Checking for stale study session to reset for user:', chatId);
+    // Get fresh user data first
+    const freshUsers = await loadUsers();
+    const currentUserInfo = freshUsers[chatId] || users[chatId];
+    
+    // Check if user has studySessions and inProgress is true
+    if (currentUserInfo && currentUserInfo.studySessions && currentUserInfo.studySessions.inProgress) {
+        console.log('Found study session marked as in-progress, checking if stale...');
+        
+        // Calculate expected end time
+        const sessionStartTime = currentUserInfo.studySessions.startTime || 0;
+        const sessionDuration = currentUserInfo.studySessions.duration || 25;
+        const expectedEndTime = sessionStartTime + (sessionDuration * 60 * 1000);
+        const currentTime = Date.now();
+        
+        // Consider a session stale if:
+        // 1. It started more than 3 hours ago (regardless of duration) or
+        // 2. It should have ended at least 1 minute ago
+        const isStale = (currentTime > expectedEndTime + (1 * 60 * 1000)) || 
+                      (currentTime > sessionStartTime + (3 * 60 * 60 * 1000));
+        
+        if (isStale) {
+            console.log('STALE SESSION DETECTED - Resetting inProgress flag');
+            // Update the freshUsers object
+            freshUsers[chatId].studySessions.inProgress = false;
+            await fs.writeFile(USERS_FILE_PATH, JSON.stringify(freshUsers, null, 2));
+            
+            // Also update in-memory users
+            if (users[chatId] && users[chatId].studySessions) {
+                users[chatId].studySessions.inProgress = false;
+            }
+            
+            console.log('Study session reset complete. Session details:', {
+                startTime: new Date(sessionStartTime).toISOString(),
+                currentTime: new Date(currentTime).toISOString(),
+                expectedEndTime: new Date(expectedEndTime).toISOString(),
+                durationMinutes: sessionDuration,
+                minutesSinceEnd: Math.floor((currentTime - expectedEndTime) / 60000),
+                hoursSinceStart: Math.floor((currentTime - sessionStartTime) / 3600000)
+            });
+            
+            return true; // Session was reset
+        } else {
+            console.log('Study session still active:', {
+                startTime: new Date(sessionStartTime).toISOString(), 
+                minutesRemaining: Math.floor((expectedEndTime - currentTime) / 60000)
+            });
+            return false; // Session is still active
+        }
+    }
+    return false; // No session to reset
+};
+
 // Contract ABIs
 const QUIZ_MANAGER_ABI = [
     "function completeQuiz(address user, uint256 score) external",
@@ -164,36 +219,8 @@ const handleStudySessionCommand = async (bot, users, chatId) => {
         
         console.log('User wallet address:', userInfo.address);
 
-        // Check for and reset stale study sessions
-        if (userInfo.studySessions && userInfo.studySessions.inProgress) {
-            console.log('Detected in-progress study session, checking if stale...');
-            const currentTime = Date.now();
-            const sessionStartTime = userInfo.studySessions.startTime || 0;
-            const sessionDuration = userInfo.studySessions.duration || 25;
-            const expectedEndTime = sessionStartTime + (sessionDuration * 60 * 1000);
-            
-            // Check if the session should have ended by now (add a 5 minute buffer)
-            if (currentTime > expectedEndTime + (5 * 60 * 1000)) {
-                console.log('Study session is stale, resetting inProgress flag');
-                userInfo.studySessions.inProgress = false;
-                await saveUsers(users);
-                
-                // Log for debugging
-                console.log('Study session reset. Session details:', {
-                    startTime: new Date(sessionStartTime).toISOString(),
-                    currentTime: new Date(currentTime).toISOString(),
-                    expectedEndTime: new Date(expectedEndTime).toISOString(),
-                    durationMinutes: sessionDuration
-                });
-            } else {
-                console.log('Study session is still active:', {
-                    startTime: new Date(sessionStartTime).toISOString(),
-                    currentTime: new Date(currentTime).toISOString(),
-                    expectedEndTime: new Date(expectedEndTime).toISOString(),
-                    minutesRemaining: Math.floor((expectedEndTime - currentTime) / 60000)
-                });
-            }
-        }
+        // Check for and reset stale study sessions using the central function
+        await resetStaleStudySession(users, chatIdStr);
 
         // Initialize study sessions if needed
         if (!userInfo.studySessions) {
@@ -273,6 +300,9 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
         const chatIdStr = chatId.toString();
         console.log('User exists:', users[chatIdStr] ? 'Yes' : 'No');
         
+        // Force reset any stale sessions using the central function
+        await resetStaleStudySession(users, chatIdStr);
+        
         if (users[chatIdStr]) {
             console.log('User address exists:', users[chatIdStr].address ? 'Yes' : 'No');
             console.log('User wallet address:', users[chatIdStr].address);
@@ -303,22 +333,6 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
                 inProgress: false,
                 history: []
             };
-        }
-
-        // Check for stale in-progress session
-        if (userInfo.studySessions.inProgress) {
-            const currentTime = Date.now();
-            const sessionStartTime = userInfo.studySessions.startTime || 0;
-            const sessionDuration = userInfo.studySessions.duration || 25;
-            const expectedEndTime = sessionStartTime + (sessionDuration * 60 * 1000);
-            
-            // Check if the session should have ended by now (add a 5 minute buffer)
-            if (currentTime > expectedEndTime + (5 * 60 * 1000)) {
-                console.log('Found stale study session, resetting inProgress flag');
-                userInfo.studySessions.inProgress = false;
-                // Save this change immediately
-                await saveUsers(users);
-            }
         }
 
         // Check if session is already in progress (only after checking for stale sessions)
@@ -389,62 +403,87 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
                 const currentUsers = await loadUsers();
                 const currentUserInfo = currentUsers[chatId.toString()];
                 
-                if (currentUserInfo && currentUserInfo.studySessions && currentUserInfo.studySessions.inProgress) {
-                    // Mark session as completed
+                // Force reset inProgress flag regardless of current state
+                // This ensures the flag is always reset even if there are race conditions
+                if (currentUserInfo && currentUserInfo.studySessions) {
+                    console.log('Force resetting inProgress flag for user:', chatId.toString());
                     currentUserInfo.studySessions.inProgress = false;
-                    currentUserInfo.studySessions.completed += 1;
                     
-                    // Add session to history for proper time tracking
-                    const sessionDuration = data === "study_25" ? 25 : 50; // Use actual intended duration for stats
-                    const sessionEndTime = Date.now();
-                    const sessionStartTime = currentUserInfo.studySessions.startTime;
-                    
-                    // Initialize history array if it doesn't exist
-                    if (!currentUserInfo.studySessions.history) {
-                        currentUserInfo.studySessions.history = [];
+                    // Also immediately update the in-memory version
+                    if (users[chatId.toString()] && users[chatId.toString()].studySessions) {
+                        users[chatId.toString()].studySessions.inProgress = false;
                     }
                     
-                    // Add this session to history
-                    currentUserInfo.studySessions.history.push({
-                        startTime: sessionStartTime,
-                        endTime: sessionEndTime,
-                        duration: sessionDuration,
-                        type: data === "study_25" ? "pomodoro" : "extended"
-                    });
-                    
-                    await saveUsers(currentUsers);
-                    
-                    // Send completion message
-                    await bot.sendMessage(
-                        chatId,
-                        `🎉 Congratulations! You've completed a ${data === "study_25" ? "25" : "50"}-minute study session!\n\nProcessing your reward...`
-                    );
-                    
-                    // Reward the user with tokens
-                    await rewardStudySession(bot, chatId, currentUserInfo.address);
-                    
-                    // Check if user has reached a badge milestone
-                    await checkBadgeMilestone(bot, chatId, currentUserInfo.address, currentUserInfo.studySessions.completed);
-                    
-                    // Send options for next actions
-                    await bot.sendMessage(
-                        chatId,
-                        "What would you like to do next?",
-                        {
-                            reply_markup: {
-                                inline_keyboard: [
-                                    [
-                                        { text: "📚 Start Another Session", callback_data: "study_session" },
-                                        { text: "📊 View Progress", callback_data: "progress" }
-                                    ],
-                                    [{ text: "🔙 Back to Menu", callback_data: "menu" }]
-                                ]
-                            }
+                    // Record completion only if it was previously in progress
+                    if (currentUserInfo.studySessions.inProgress === true) {
+                        currentUserInfo.studySessions.completed += 1;
+                        
+                        // Add session to history for proper time tracking
+                        const sessionDuration = data === "study_25" ? 25 : 50; // Use actual intended duration for stats
+                        const sessionEndTime = Date.now();
+                        const sessionStartTime = currentUserInfo.studySessions.startTime;
+                        
+                        // Initialize history array if it doesn't exist
+                        if (!currentUserInfo.studySessions.history) {
+                            currentUserInfo.studySessions.history = [];
                         }
-                    );
+                        
+                        // Add this session to history
+                        currentUserInfo.studySessions.history.push({
+                            startTime: sessionStartTime,
+                            endTime: sessionEndTime,
+                            duration: sessionDuration,
+                            type: data === "study_25" ? "pomodoro" : "extended"
+                        });
+                    }
+                    
+                    // Save immediately to prevent race conditions
+                    await saveUsers(currentUsers);
+                    console.log('Study session completion saved, inProgress reset to false');
                 }
+                
+                // Send completion message
+                await bot.sendMessage(
+                    chatId,
+                    `🎉 Congratulations! You've completed a ${data === "study_25" ? "25" : "50"}-minute study session!\n\nProcessing your reward...`
+                );
+                
+                // Reward the user with tokens
+                await rewardStudySession(bot, chatId, (currentUserInfo || users[chatId.toString()]).address);
+                
+                // Check if user has reached a badge milestone
+                await checkBadgeMilestone(bot, chatId, (currentUserInfo || users[chatId.toString()]).address, 
+                    (currentUserInfo || users[chatId.toString()]).studySessions.completed);
+                
+                // Send options for next actions
+                await bot.sendMessage(
+                    chatId,
+                    "What would you like to do next?",
+                    {
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: "📚 Start Another Session", callback_data: "study_session" },
+                                    { text: "📊 View Progress", callback_data: "progress" }
+                                ],
+                                [{ text: "🔙 Back to Menu", callback_data: "menu" }]
+                            ]
+                        }
+                    }
+                );
             } catch (error) {
                 console.error('Error completing study session:', error);
+                // Even if an error occurs, try to reset the inProgress flag
+                try {
+                    if (users[chatId.toString()] && users[chatId.toString()].studySessions) {
+                        users[chatId.toString()].studySessions.inProgress = false;
+                        await saveUsers(users);
+                        console.log('Emergency inProgress flag reset after error');
+                    }
+                } catch (saveError) {
+                    console.error('Failed to reset inProgress flag after error:', saveError);
+                }
+                
                 await bot.sendMessage(
                     chatId,
                     "❌ There was an error completing your study session. Your progress has been saved, but rewards couldn't be processed.",
