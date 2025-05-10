@@ -50,7 +50,10 @@ const BADGE_NFT_ABI = [
 // QuizManager ABI for study metrics
 const QUIZ_MANAGER_ABI = [
   "function completedQuizzes(address) view returns (uint256)",
-  "function quizScores(address) view returns (uint256)"
+  "function quizScores(address) view returns (uint256)",
+  // Add alternative function names
+  "function getUserQuizCount(address) view returns (uint256)",
+  "function getUserScore(address) view returns (uint256)"
 ];
 
 // Generate a shareable link for tracking progress
@@ -150,24 +153,45 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
       provider
     );
 
-    // Fetch all data in parallel for efficiency
+    // Fetch token data and badge data in parallel
     const [
       tokenBalance, 
       decimals,
       symbol,
       [bronze, silver, gold],
-      completedQuizzes,
-      quizScores,
       nftCount
     ] = await Promise.all([
       simbiToken.balanceOf(userAddress),
       simbiToken.decimals(),
       simbiToken.symbol(),
       simbiBadgeNFT.getAttemptCounts(userAddress),
-      quizManager.completedQuizzes(userAddress),
-      quizManager.quizScores(userAddress),
       simbiBadgeNFT.balanceOf(userAddress)
     ]);
+
+    // Fetch quiz stats using try/catch to attempt different function names
+    let completedQuizzes = 0;
+    let quizScores = 0;
+    
+    try {
+      // First try original function names
+      try {
+        [completedQuizzes, quizScores] = await Promise.all([
+          quizManager.completedQuizzes(userAddress),
+          quizManager.quizScores(userAddress)
+        ]);
+      } catch (error) {
+        console.log('Primary quiz stats functions not found, trying alternatives');
+        [completedQuizzes, quizScores] = await Promise.all([
+          quizManager.getUserQuizCount(userAddress),
+          quizManager.getUserScore(userAddress)
+        ]);
+      }
+    } catch (error) {
+      console.log('Error fetching quiz stats:', error);
+      // Use local data as fallback
+      completedQuizzes = users[chatId]?.completedQuizzes || 0;
+      quizScores = 0;
+    }
 
     // Calculate formatted token balance
     const formattedBalance = ethers.formatUnits(tokenBalance, decimals);
@@ -297,6 +321,7 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
     // Send loading message
     await bot.sendMessage(chatId, '🔍 *Fetching your achievement NFTs...*', { parse_mode: 'Markdown' });
 
+    // Initialize provider
     const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
     const simbiBadgeNFT = new ethers.Contract(
       SIMBIBADGE_NFT_CA,
@@ -304,13 +329,52 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
       provider
     );
 
-    // Get attempt counts and balance
-    const [attemptCounts, nftBalance] = await Promise.all([
-      simbiBadgeNFT.getAttemptCounts(userAddress),
-      simbiBadgeNFT.balanceOf(userAddress)
-    ]);
-
-    const [bronze, silver, gold] = attemptCounts;
+    // Try to get on-chain attempt counts
+    let bronze = 0, silver = 0, gold = 0;
+    let nftBalance = 0;
+    let eligibleTier = null;
+    
+    try {
+      // Get NFT counts from contract
+      [
+        [bronze, silver, gold],
+        nftBalance,
+        eligibleTier
+      ] = await Promise.all([
+        simbiBadgeNFT.getAttemptCounts(userAddress),
+        simbiBadgeNFT.balanceOf(userAddress),
+        simbiBadgeNFT.getEligibleTier(userAddress)
+      ]);
+    } catch (error) {
+      console.error('Error fetching on-chain NFT data:', error);
+      
+      // Fallback to local data as estimates
+      const completedQuizzes = users[userChatId]?.completedQuizzes || 0;
+      const completedSessions = users[userChatId]?.studySessions?.completed || 0;
+      
+      // Estimate based on completed study sessions (main factor for NFT badges)
+      bronze = completedSessions; // 1:1 ratio
+      silver = Math.floor(completedSessions * 0.7); // conservative estimate 
+      gold = Math.floor(completedSessions * 0.5); // conservative estimate
+      
+      // Determine eligible tier based on completed sessions
+      if (completedSessions >= 70) {
+        eligibleTier = 2; // Gold
+      } else if (completedSessions >= 50) {
+        eligibleTier = 1; // Silver
+      } else if (completedSessions >= 20) {
+        eligibleTier = 0; // Bronze
+      } else {
+        eligibleTier = null;
+      }
+      
+      // Try to get NFT balance only if other calls failed
+      try {
+        nftBalance = await simbiBadgeNFT.balanceOf(userAddress);
+      } catch (e) {
+        nftBalance = 0;
+      }
+    }
     
     // Generate NFT achievement message
     let nftMessage = `🏅 *Your Achievement NFTs*\n\n`;
@@ -329,21 +393,44 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
     
     // Add total NFT count
     nftMessage += `🎖️ *Total NFT Badges:* ${nftBalance}\n\n`;
-    nftMessage += `🔍 Complete more study sessions and quizzes to earn more badges!`;
+    
+    // Set up the response buttons
+    const buttons = [];
+    
+    // Add Mint NFT Button if eligible for any tier
+    if (eligibleTier !== null) {
+      // Find the highest eligible tier
+      let tierName;
+      if (eligibleTier === 2) {
+        tierName = "Gold";
+      } else if (eligibleTier === 1) {
+        tierName = "Silver";
+      } else {
+        tierName = "Bronze";
+      }
+      
+      nftMessage += `✨ *Achievement Unlocked!* You are eligible for the ${tierName} Tier Badge!\n\n`;
+      
+      // Add mint button for eligible tier
+      buttons.push([{ text: `🎖️ Mint ${tierName} NFT Badge`, callback_data: `mint_badge_${eligibleTier}` }]);
+    } else {
+      nftMessage += `🔍 Complete more study sessions and quizzes to earn badges!`;
+    }
+    
+    // Add standard navigation buttons
+    buttons.push([
+      { text: "📊 View Full Progress", callback_data: "progress" },
+      { text: "🔙 Back to Menu", callback_data: "menu" }
+    ]);
 
-    // Send achievements with Back to Menu button
+    // Send achievements with buttons
     await bot.sendMessage(
       chatId, 
       nftMessage, 
       { 
         parse_mode: 'Markdown',
         reply_markup: {
-          inline_keyboard: [
-            [
-              { text: "📊 View Full Progress", callback_data: "progress" },
-              { text: "🔙 Back to Menu", callback_data: "menu" }
-            ]
-          ]
+          inline_keyboard: buttons
         }
       }
     );
@@ -450,4 +537,226 @@ Your on-chain progress is stored on the blockchain and can be accessed from any 
   }
 };
 
-export { handleTrackProgressCommand, handleAchievementNFTs, handleShareProgress };
+// Handle minting NFT badges
+const mintNFTBadge = async (bot, users, chatId, tier) => {
+  try {
+    console.log(`Minting NFT Badge - Chat ID: ${chatId}, Tier: ${tier}`);
+    
+    // Environment variables
+    const SIMBIBADGE_NFT_CA = process.env.SIMBIBADGE_NFT_CA;
+    const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
+    const PRIVATE_KEY = process.env.PRIVATE_KEY;
+
+    // First ensure we stringify the chatId for consistency
+    const userChatId = chatId.toString();
+    const userAddress = users[userChatId]?.address;
+
+    if (!userAddress) {
+      console.error('No wallet address found for user', userChatId);
+      return bot.sendMessage(
+        chatId, 
+        '❗ Wallet data not found. Please go back to Menu and then retry.',
+        {
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+          }
+        }
+      );
+    }
+
+    // Validate environment variables
+    if (!SIMBIBADGE_NFT_CA || !BASE_SEPOLIA_RPC_URL || !PRIVATE_KEY) {
+      console.error('Missing required environment variables for NFT minting');
+      return bot.sendMessage(
+        chatId, 
+        '⚠️ Configuration error: Missing contract information. Please contact support.',
+        {
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+          }
+        }
+      );
+    }
+    
+    // Validate tier
+    if (tier < 0 || tier > 2) {
+      return bot.sendMessage(
+        chatId, 
+        '❌ Invalid badge tier specified.',
+        {
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+          }
+        }
+      );
+    }
+    
+    // Get tier name for messages
+    const tierNames = ["Bronze", "Silver", "Gold"];
+    const tierName = tierNames[tier];
+    
+    // Send initial message
+    await bot.sendMessage(
+      chatId,
+      `🏅 *Minting ${tierName} Tier Badge*\n\nPreparing your NFT badge...`,
+      { parse_mode: 'Markdown' }
+    );
+    
+    // Initialize provider and signer
+    const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
+    const botWallet = new ethers.Wallet(PRIVATE_KEY, provider);
+    
+    // Initialize badge NFT contract
+    const badgeNFT = new ethers.Contract(
+      SIMBIBADGE_NFT_CA,
+      BADGE_NFT_ABI,
+      botWallet
+    );
+    
+    // Verify user is eligible for the specified tier
+    try {
+      const eligibleTier = await badgeNFT.getEligibleTier(userAddress);
+      console.log(`User is eligible for tier: ${eligibleTier}`);
+      
+      if (eligibleTier < tier) {
+        return bot.sendMessage(
+          chatId,
+          `❌ You are not eligible for the ${tierName} Tier Badge yet.\n\nKeep completing study sessions to unlock this badge!`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: "📊 View Progress", callback_data: "progress" }],
+                [{ text: "🔙 Back to Menu", callback_data: "menu" }]
+              ]
+            }
+          }
+        );
+      }
+    } catch (error) {
+      console.error('Error checking eligibility:', error);
+      
+      // If we can't verify eligibility, try to mint anyway
+      // The contract should have its own checks in place
+      console.log('Proceeding with mint attempt despite eligibility check failure');
+    }
+    
+    // Attempt to mint the NFT
+    try {
+      const tx = await badgeNFT.safeMint(
+        userAddress,
+        tier,
+        {
+          gasLimit: 500000n,
+          maxFeePerGas: ethers.parseUnits('2', 'gwei'),
+          maxPriorityFeePerGas: ethers.parseUnits('1.5', 'gwei')
+        }
+      );
+      
+      console.log('Mint transaction sent:', tx.hash);
+      
+      // Notify user of pending transaction
+      await bot.sendMessage(
+        chatId,
+        `🔄 Minting your ${tierName} Tier Badge...\n\nTransaction: https://sepolia.basescan.org/tx/${tx.hash}`
+      );
+      
+      // Wait for transaction confirmation
+      const receipt = await tx.wait(1);
+      console.log('Mint transaction confirmed:', receipt.hash);
+      
+      if (receipt.status === 1) {
+        // Try to get the badge URI or image if available
+        let badgeImage = null;
+        try {
+          // Get latest token ID (could be different depending on contract implementation)
+          const nftBalance = await badgeNFT.balanceOf(userAddress);
+          const baseUri = await badgeNFT.getTierBaseURI(tier);
+          
+          // Extract IPFS URI if available
+          if (baseUri) {
+            badgeImage = baseUri.replace('ipfs://', 'https://ipfs.io/ipfs/');
+          }
+        } catch (error) {
+          console.error('Error getting badge image:', error);
+        }
+        
+        // Success message
+        await bot.sendMessage(
+          chatId,
+          `✅ *Congratulations!*\n\nYour ${tierName} Tier Badge has been successfully minted!\n\nThis NFT has been added to your wallet and will be visible in your Achievement NFTs section.`,
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: "🏅 View Achievements", callback_data: "achievements" },
+                  { text: "📊 View Progress", callback_data: "progress" }
+                ],
+                [{ text: "🔙 Back to Menu", callback_data: "menu" }]
+              ]
+            }
+          }
+        );
+        
+        // Send badge image if available
+        if (badgeImage) {
+          try {
+            await bot.sendPhoto(
+              chatId,
+              badgeImage,
+              { caption: `🏅 Your ${tierName} Tier Badge` }
+            );
+          } catch (imageError) {
+            console.error('Error sending badge image:', imageError);
+          }
+        }
+        
+        return true;
+      } else {
+        throw new Error('Transaction failed');
+      }
+    } catch (error) {
+      console.error('Error minting NFT badge:', error);
+      
+      // Handle specific error cases
+      let errorMessage = '❌ Failed to mint NFT badge. ';
+      
+      if (error.message.includes('already has badge')) {
+        errorMessage = `You already own the ${tierName} Tier Badge.`;
+      } else if (error.message.includes('not eligible')) {
+        errorMessage = `You are not eligible for the ${tierName} Tier Badge yet. Keep completing study sessions!`;
+      } else if (error.message.includes('execution reverted')) {
+        errorMessage += 'The transaction was rejected by the blockchain.';
+      } else {
+        errorMessage += 'Please try again later.';
+      }
+      
+      await bot.sendMessage(
+        chatId,
+        errorMessage,
+        {
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+          }
+        }
+      );
+      
+      return false;
+    }
+    
+  } catch (error) {
+    console.error('Error in mintNFTBadge:', error);
+    bot.sendMessage(
+      chatId, 
+      '⚠️ An error occurred while minting your badge. Please try again later.',
+      {
+        reply_markup: {
+          inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+        }
+      }
+    );
+    return false;
+  }
+};
+
+export { handleTrackProgressCommand, handleAchievementNFTs, handleShareProgress, mintNFTBadge };

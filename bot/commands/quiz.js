@@ -591,13 +591,37 @@ const handleTokenReward = async (bot, chatId, userAddress, finalScore) => {
             
             // Update quiz stats in the background (non-blocking)
             try {
-                // Record quiz stats asynchronously (don't await)
+                // Always update the local user data first
+                const usersFile = path.join(process.cwd(), 'users.json');
+                const userData = await fs.readFile(usersFile, 'utf8');
+                const updatedUsers = JSON.parse(userData);
+                
+                // Add or increment the completedQuizzes counter
+                if (updatedUsers[chatId]) {
+                    if (!updatedUsers[chatId].completedQuizzes) {
+                        updatedUsers[chatId].completedQuizzes = 1;
+                    } else {
+                        updatedUsers[chatId].completedQuizzes += 1;
+                    }
+                    
+                    // Add or update quizScore
+                    if (!updatedUsers[chatId].quizScore) {
+                        updatedUsers[chatId].quizScore = finalScore;
+                    } else {
+                        updatedUsers[chatId].quizScore += finalScore;
+                    }
+                    
+                    await fs.writeFile(usersFile, JSON.stringify(updatedUsers, null, 2));
+                    console.log(`Quiz stats saved. User now has ${updatedUsers[chatId].completedQuizzes} completed quizzes with score ${updatedUsers[chatId].quizScore}`);
+                }
+                
+                // Now try to update on-chain stats
                 updateQuizStats(botWallet, process.env.SIMBIQUIZMANAGER_CA, userAddress, finalScore);
             } catch (e) {
                 console.log('Background quiz stats update failed (non-critical):', e.message);
             }
             
-            // Make sure to load the latest user data before redirecting
+            // Keep the user data in memory
             try {
                 const usersFile = path.join(process.cwd(), 'users.json');
                 const userData = await fs.readFile(usersFile, 'utf8');
@@ -717,29 +741,55 @@ async function updateQuizStats(signer, quizManagerAddress, userAddress, score) {
             signer
         );
         
-        // Just record the quiz attempt for badge eligibility
+        // Try multiple possible methods to ensure at least one works
         try {
-            // Update the completedQuizzes counter (minimal function call)
-            const tx = await quizManagerWithSigner.recordQuizCompletion(
-                userAddress, 
-                score,
-                { gasLimit: 200000n }
-            );
-            console.log('Quiz stats update sent:', tx.hash);
-        } catch (err) {
-            console.log('recordQuizCompletion not available, trying alternative methods');
+            // 1. First try recordQuizCompletion
+            try {
+                const tx = await quizManagerWithSigner.recordQuizCompletion(
+                    userAddress, 
+                    score,
+                    { gasLimit: 300000n }
+                );
+                console.log('Quiz stats update (recordQuizCompletion) sent:', tx.hash);
+                await tx.wait();
+                console.log('recordQuizCompletion successful');
+                return;
+            } catch (err) {
+                console.log('recordQuizCompletion failed, trying alternative:', err.message);
+            }
             
-            // Try updateQuizStats function
+            // 2. Try updateQuizStats
             try {
                 const tx = await quizManagerWithSigner.updateQuizStats(
                     userAddress, 
                     score,
-                    { gasLimit: 200000n }
+                    { gasLimit: 300000n }
                 );
-                console.log('Quiz stats update sent:', tx.hash);
+                console.log('Quiz stats update (updateQuizStats) sent:', tx.hash);
+                await tx.wait();
+                console.log('updateQuizStats successful');
+                return;
             } catch (err2) {
-                console.log('No suitable method found to update quiz stats');
+                console.log('updateQuizStats failed, trying alternative:', err2.message);
             }
+            
+            // 3. Try completeQuiz
+            try {
+                const tx = await quizManagerWithSigner.completeQuiz(
+                    userAddress, 
+                    score,
+                    { gasLimit: 300000n }
+                );
+                console.log('Quiz stats update (completeQuiz) sent:', tx.hash);
+                await tx.wait();
+                console.log('completeQuiz successful');
+                return;
+            } catch (err3) {
+                console.log('completeQuiz failed:', err3.message);
+                console.log('All quiz stats update methods failed');
+            }
+        } catch (err) {
+            console.log('Quiz stats update general error:', err.message);
         }
     } catch (error) {
         console.error('Failed to update quiz stats:', error.message);

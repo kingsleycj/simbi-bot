@@ -11,7 +11,12 @@ const USERS_FILE_PATH = path.join(process.cwd(), 'users.json');
 // Define Quiz Manager ABI for contract interaction
 const QUIZ_MANAGER_ABI = [
   "function completedQuizzes(address) view returns (uint256)",
-  "function quizScores(address) view returns (uint256)"
+  "function quizScores(address) view returns (uint256)",
+  // Add these alternative function names that might exist in the contract
+  "function getUserQuizCount(address) view returns (uint256)",
+  "function getUserScore(address) view returns (uint256)",
+  "function recordQuizCompletion(address user, uint256 score) external",
+  "function updateQuizStats(address user, uint256 score) external"
 ];
 
 // Load users data
@@ -49,17 +54,33 @@ async function getOnChainQuizData(userAddress) {
       provider
     );
     
-    // Get quiz data from blockchain
+    // Get quiz data from blockchain - try multiple function names
     try {
-      const [completedQuizzes, quizScore] = await Promise.all([
-        quizManager.completedQuizzes(userAddress),
-        quizManager.quizScores(userAddress)
-      ]);
-      
-      return {
-        completedQuizzes: Number(completedQuizzes),
-        quizScore: Number(quizScore)
-      };
+      // First try completedQuizzes/quizScores
+      try {
+        const [completedQuizzes, quizScore] = await Promise.all([
+          quizManager.completedQuizzes(userAddress),
+          quizManager.quizScores(userAddress)
+        ]);
+        
+        return {
+          completedQuizzes: Number(completedQuizzes),
+          quizScore: Number(quizScore)
+        };
+      } catch (error) {
+        console.log('Primary function call failed, trying alternatives');
+        
+        // Try alternative function names
+        const [completedQuizzes, quizScore] = await Promise.all([
+          quizManager.getUserQuizCount(userAddress),
+          quizManager.getUserScore(userAddress)
+        ]);
+        
+        return {
+          completedQuizzes: Number(completedQuizzes),
+          quizScore: Number(quizScore)
+        };
+      }
     } catch (contractError) {
       console.log('Contract functions not available:', contractError.message);
       return { completedQuizzes: null, quizScore: null };

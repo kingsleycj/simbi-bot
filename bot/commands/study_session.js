@@ -164,6 +164,45 @@ const handleStudySessionCommand = async (bot, users, chatId) => {
         
         console.log('User wallet address:', userInfo.address);
 
+        // Check for and reset stale study sessions
+        if (userInfo.studySessions && userInfo.studySessions.inProgress) {
+            console.log('Detected in-progress study session, checking if stale...');
+            const currentTime = Date.now();
+            const sessionStartTime = userInfo.studySessions.startTime || 0;
+            const sessionDuration = userInfo.studySessions.duration || 25;
+            const expectedEndTime = sessionStartTime + (sessionDuration * 60 * 1000);
+            
+            // Check if the session should have ended by now (add a 5 minute buffer)
+            if (currentTime > expectedEndTime + (5 * 60 * 1000)) {
+                console.log('Study session is stale, resetting inProgress flag');
+                userInfo.studySessions.inProgress = false;
+                await saveUsers(users);
+                
+                // Log for debugging
+                console.log('Study session reset. Session details:', {
+                    startTime: new Date(sessionStartTime).toISOString(),
+                    currentTime: new Date(currentTime).toISOString(),
+                    expectedEndTime: new Date(expectedEndTime).toISOString(),
+                    durationMinutes: sessionDuration
+                });
+            } else {
+                console.log('Study session is still active:', {
+                    startTime: new Date(sessionStartTime).toISOString(),
+                    currentTime: new Date(currentTime).toISOString(),
+                    expectedEndTime: new Date(expectedEndTime).toISOString(),
+                    minutesRemaining: Math.floor((expectedEndTime - currentTime) / 60000)
+                });
+            }
+        }
+
+        // Initialize study sessions if needed
+        if (!userInfo.studySessions) {
+            userInfo.studySessions = {
+                completed: 0,
+                inProgress: false
+            };
+        }
+
         // Offer duration options
         const durationOptions = {
             reply_markup: {
@@ -257,16 +296,32 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
         // For testing: 25 minutes will actually be 2 minutes
         const duration = data === "study_25" ? 2 : 50;
         
-        // Record session start in user data
+        // Initialize study sessions if not present
         if (!userInfo.studySessions) {
             userInfo.studySessions = {
                 completed: 0,
                 inProgress: false,
-                tier: null
+                history: []
             };
         }
-        
-        // Check if session is already in progress
+
+        // Check for stale in-progress session
+        if (userInfo.studySessions.inProgress) {
+            const currentTime = Date.now();
+            const sessionStartTime = userInfo.studySessions.startTime || 0;
+            const sessionDuration = userInfo.studySessions.duration || 25;
+            const expectedEndTime = sessionStartTime + (sessionDuration * 60 * 1000);
+            
+            // Check if the session should have ended by now (add a 5 minute buffer)
+            if (currentTime > expectedEndTime + (5 * 60 * 1000)) {
+                console.log('Found stale study session, resetting inProgress flag');
+                userInfo.studySessions.inProgress = false;
+                // Save this change immediately
+                await saveUsers(users);
+            }
+        }
+
+        // Check if session is already in progress (only after checking for stale sessions)
         if (userInfo.studySessions.inProgress) {
             return bot.sendMessage(
                 chatId,

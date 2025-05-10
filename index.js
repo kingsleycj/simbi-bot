@@ -20,7 +20,7 @@ import { handleQuizCommand, handleQuizCallback, handleAnswerCallback } from './b
 import { handleSyncCommand } from './bot/commands/sync.js';
 import { handleConnectCommand } from './bot/commands/connect.js';
 import { handleSetReminderCommand, handleListReminders, handleCancelReminder } from './bot/commands/reminder.js';
-import { handleTrackProgressCommand, handleAchievementNFTs, handleShareProgress } from './bot/commands/trackProgress.js';
+import { handleTrackProgressCommand, handleAchievementNFTs, handleShareProgress, mintNFTBadge } from './bot/commands/trackProgress.js';
 import { handleWalletInfo } from './bot/commands/wallet.js';
 import { handleProfileInfo } from './bot/commands/profile.js';
 import { handleMotivation } from './bot/commands/motivation.js';
@@ -241,6 +241,10 @@ bot.on('callback_query', async (query) => {
     } else if (data === 'share_progress') {
       console.log('Triggering handleShareProgress...');
       handleShareProgress(bot, users, chatId);
+    } else if (data.startsWith('mint_badge_')) {
+      console.log('Triggering mintNFTBadge...');
+      const tier = parseInt(data.split('_')[2]);
+      mintNFTBadge(bot, users, chatId, tier);
     } else if (data === 'motivation') {
       console.log('Triggering handleMotivation...');
       handleMotivation(bot, chatId);
