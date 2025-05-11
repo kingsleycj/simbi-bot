@@ -19,6 +19,7 @@ const handleHelpCommand = async (bot, chatId) => {
 • /study_session - Start a focused study session
 • /track_progress - View your learning progress
 • /reset_study - Fix "in progress" study session issues
+• /chat - Chat with Simbi AI about study tips
 • /help - Show this help message
 
 *Study Session Troubleshooting:*
@@ -68,6 +69,7 @@ Contact the developer @kingsleycj for assistance
 • /study_session - Start a focused study session
 • /track_progress - View your learning progress
 • /reset_study - Fix "in progress" study session issues
+• /chat - Chat with Simbi AI about study tips
 • /help - Show this help message
 
 *Study Session Troubleshooting:*

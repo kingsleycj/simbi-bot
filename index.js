@@ -26,12 +26,14 @@ import { handleProfileInfo } from './bot/commands/profile.js';
 import { handleMotivation } from './bot/commands/motivation.js';
 import { handleStudySessionCommand, handleStudySessionCallback, handleCancelStudySession, handleResetStudySession } from './bot/commands/study_session.js';
 import { handleHelpCommand } from './bot/commands/help.js';
+import { handleChatCommand, handleChatMessage } from './bot/commands/chat.js';
 
 // Debug environment variables
 console.log('Environment Variables:');
 console.log('BOT_TOKEN:', process.env.BOT_TOKEN ? 'Present' : 'Missing');
 console.log('WEBHOOK_URL:', process.env.WEBHOOK_URL ? 'Present' : 'Missing');
 console.log('PORT:', process.env.PORT ? 'Present' : 'Missing');
+console.log('GROQ_API_KEY:', process.env.GROQ_API_KEY ? 'Present' : 'Missing');
 
 // === CONFIG ===
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -155,12 +157,20 @@ bot.onText(/\/study_session/, (msg) => handleStudySessionCommand(bot, users, msg
 bot.onText(/\/reset_study/, (msg) => handleResetStudySession(bot, users, msg.chat.id.toString()));
 bot.onText(/\/help/, (msg) => handleHelpCommand(bot, msg.chat.id.toString()));
 bot.onText(/\/profile/, (msg) => handleProfileInfo(bot, msg.chat.id.toString(), msg));
+bot.onText(/\/chat/, (msg) => handleChatCommand(bot, msg.chat.id.toString()));
 
-// Handle unknown commands
+// Handle regular messages (for chat feature)
 bot.on('message', (msg) => {
   if (!msg.text.startsWith('/')) {
-    bot.sendMessage(msg.chat.id, '❓ Unknown command. Use /menu to see available options.')
-      .catch(error => console.error('Error sending unknown command message:', error));
+    // Check if the user has a chat in progress
+    if (msg.reply_to_message && msg.reply_to_message.text && 
+        msg.reply_to_message.text.includes("I'm SIMBI, your AI study buddy")) {
+      // Handle the chat message
+      handleChatMessage(bot, msg.chat.id.toString(), msg);
+    } else {
+      bot.sendMessage(msg.chat.id, '❓ Unknown command. Use /menu to see available options.')
+        .catch(error => console.error('Error sending unknown command message:', error));
+    }
   }
 });
 
@@ -279,6 +289,9 @@ bot.on('callback_query', async (query) => {
     } else if (data === 'reset_study') {
       console.log('Triggering handleResetStudySession...');
       handleResetStudySession(bot, users, chatId);
+    } else if (data === 'chat') {
+      console.log('Triggering handleChatCommand...');
+      handleChatCommand(bot, chatId);
     } else {
       console.log('Unknown action received:', data);
       bot.sendMessage(

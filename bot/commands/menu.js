@@ -6,11 +6,11 @@ const handleMenuCommand = (bot, chatId) => {
       inline_keyboard: [
         [
           { text: "🎮 Take a Quiz", callback_data: 'quiz' }, // Updated to trigger category selection
-          { text: "👛 Wallet Info", callback_data: 'wallet' }
+          { text: "🤖 Chat with Simbi", callback_data: 'chat' }
         ],
         [
           { text: "📄 View Profile", callback_data: 'profile' },
-          { text: "❓ Help", callback_data: 'show_help' }
+          { text: "👛 Wallet Info", callback_data: 'wallet' }
         ],
         [
           { text: "⏰ Set Reminder", callback_data: 'reminder' },
@@ -21,7 +21,8 @@ const handleMenuCommand = (bot, chatId) => {
           { text: "💡 Motivation", callback_data: 'motivation' }
         ],
         [
-          { text: "📚 Study Session", callback_data: 'study_session' }
+          { text: "📚 Study Session", callback_data: 'study_session' },
+          { text: "❓ Help", callback_data: 'show_help' }
         ]
       ]
     }
