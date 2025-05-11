@@ -20,8 +20,16 @@ const SIMBI_SYSTEM_PROMPT = `You're SIMBI, a sassy and smart AI study assistant.
 Always tailor your responses to help users become better students!`;
 
 // Function to handle chat messages
-const handleChatMessage = async (bot, chatId, message) => {
+const handleChatMessage = async (bot, chatId, message, users = {}) => {
   try {
+    console.log(`Processing chat message from ${chatId}: "${message.text}"`);
+    
+    // Ensure user has a record and set chat mode
+    if (!users[chatId]) {
+      users[chatId] = {};
+    }
+    users[chatId].inChatMode = true;
+    
     // Send "typing" action to show the bot is processing
     await bot.sendChatAction(chatId, "typing");
 
@@ -45,6 +53,8 @@ const handleChatMessage = async (bot, chatId, message) => {
       return;
     }
 
+    console.log(`Sending message to Groq API: "${userMessage}"`);
+    
     // Process the message with Groq API
     const completion = await groq.chat.completions.create({
       messages: [
@@ -62,20 +72,25 @@ const handleChatMessage = async (bot, chatId, message) => {
 
     // Get the AI response
     const responseText = completion.choices[0]?.message?.content || "Sorry, I couldn't process that right now. Try again?";
+    
+    console.log(`Received response from Groq API: "${responseText.substring(0, 50)}..."`);
 
     // Send the response with a Back to Menu button
-    await bot.sendMessage(
+    const sentMessage = await bot.sendMessage(
       chatId,
       responseText,
       {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: "🔙 Back to Menu", callback_data: "menu" }]
+            [{ text: "🔙 Back to Menu", callback_data: "menu" }],
+            [{ text: "💬 Continue Chatting", callback_data: "chat" }]
           ]
         }
       }
     );
+    
+    console.log(`Sent response message ID: ${sentMessage.message_id}`);
   } catch (error) {
     console.error('Error in chat processing:', error);
     
@@ -95,20 +110,42 @@ const handleChatMessage = async (bot, chatId, message) => {
 };
 
 // Function to initialize chat command
-const handleChatCommand = async (bot, chatId) => {
+const handleChatCommand = async (bot, chatId, users = {}) => {
   try {
+    // Ensure user has a record and set chat mode
+    if (!users[chatId]) {
+      users[chatId] = {};
+    }
+    users[chatId].inChatMode = true;
+    
+    // First send a message explaining how to chat
     await bot.sendMessage(
       chatId,
-      "👋 Hey there! I'm SIMBI, your AI study buddy. Ask me anything about studying, time management, or learning techniques!",
+      "👋 *Chat with SIMBI*\n\nI'm your AI study buddy! Ask me anything about studying, time management, or learning techniques. Just type your message after this and I'll respond!",
       {
+        parse_mode: 'Markdown',
         reply_markup: {
-          force_reply: true,
           inline_keyboard: [
             [{ text: "🔙 Back to Menu", callback_data: "menu" }]
           ]
         }
       }
     );
+    
+    // Then send a message to prompt a reply
+    setTimeout(async () => {
+      await bot.sendMessage(
+        chatId,
+        "I'm SIMBI, your AI study buddy. What would you like to ask me today?",
+        {
+          reply_markup: {
+            force_reply: true
+          }
+        }
+      );
+    }, 500);
+    
+    console.log(`Chat session initialized for chat ID: ${chatId}`);
   } catch (error) {
     console.error('Error starting chat:', error);
     await bot.sendMessage(

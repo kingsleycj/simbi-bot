@@ -157,21 +157,68 @@ bot.onText(/\/study_session/, (msg) => handleStudySessionCommand(bot, users, msg
 bot.onText(/\/reset_study/, (msg) => handleResetStudySession(bot, users, msg.chat.id.toString()));
 bot.onText(/\/help/, (msg) => handleHelpCommand(bot, msg.chat.id.toString()));
 bot.onText(/\/profile/, (msg) => handleProfileInfo(bot, msg.chat.id.toString(), msg));
-bot.onText(/\/chat/, (msg) => handleChatCommand(bot, msg.chat.id.toString()));
+bot.onText(/\/chat/, (msg) => handleChatCommand(bot, msg.chat.id.toString(), users));
 
-// Handle regular messages (for chat feature)
+// Handle regular messages (for chat feature and other interactions)
 bot.on('message', (msg) => {
-  if (!msg.text.startsWith('/')) {
-    // Check if the user has a chat in progress
-    if (msg.reply_to_message && msg.reply_to_message.text && 
-        msg.reply_to_message.text.includes("I'm SIMBI, your AI study buddy")) {
-      // Handle the chat message
-      handleChatMessage(bot, msg.chat.id.toString(), msg);
-    } else {
-      bot.sendMessage(msg.chat.id, '❓ Unknown command. Use /menu to see available options.')
-        .catch(error => console.error('Error sending unknown command message:', error));
-    }
+  if (!msg.text || msg.text.startsWith('/')) {
+    return; // Skip command messages or messages without text
   }
+  
+  // Get the chat ID as string for consistency
+  const chatId = msg.chat.id.toString();
+  
+  // Debug logging
+  console.log(`Received message: "${msg.text}" from chat ID: ${chatId}`);
+  console.log(`Reply to message: ${msg.reply_to_message ? 'Yes' : 'No'}`);
+  
+  // Create a user context for chat if it doesn't exist
+  if (!users[chatId]) {
+    users[chatId] = {};
+  }
+  
+  // Track if we've handled this message
+  let messageHandled = false;
+  
+  // Check if this is a reply to a bot message
+  if (msg.reply_to_message) {
+    const replyText = msg.reply_to_message.text || '';
+    console.log(`Reply to text: "${replyText.substring(0, 30)}..."`);
+    
+    // Handle chat with Simbi replies - check for multiple possible phrases
+    if (
+      replyText.includes("I'm SIMBI, your AI study buddy") || 
+      replyText.includes("Chat with SIMBI") ||
+      replyText.includes("What would you like to ask me")
+    ) {
+      console.log('Handling as chat message');
+      handleChatMessage(bot, chatId, msg, users);
+      messageHandled = true;
+      return;
+    }
+    
+    // Handle reminder time setting
+    if (replyText.includes("Please enter the time for your reminder")) {
+      console.log('Message is a reply to reminder setup - letting onReplyToMessage handle it');
+      messageHandled = true;
+      return; // Let the onReplyToMessage handler in reminder.js handle this
+    }
+    
+    // Add other reply handlers here if needed
+  }
+  
+  // Check if we should treat this as a chat message even without a reply
+  // This helps when users just continue typing without explicitly replying
+  if (!messageHandled && users[chatId].inChatMode) {
+    console.log('User is in chat mode, handling as chat message');
+    handleChatMessage(bot, chatId, msg, users);
+    return;
+  }
+  
+  // If we get here, it's an unprompted message that's not a command
+  console.log('Sending unknown command message');
+  bot.sendMessage(chatId, '❓ Unknown command. Use /menu to see available options.')
+    .catch(error => console.error('Error sending unknown command message:', error));
 });
 
 // Centralized callback_query handler
@@ -204,6 +251,11 @@ bot.on('callback_query', async (query) => {
   try {
     if (data === 'menu') {
       console.log('Triggering handleMenuCommand...');
+      // Reset chat mode when returning to menu
+      if (users[chatId]) {
+        users[chatId].inChatMode = false;
+        console.log(`Reset chat mode for user ${chatId}`);
+      }
       handleMenuCommand(bot, chatId);
     } else if (data === 'quiz') {
       console.log('Triggering handleQuizCommand...');
@@ -291,7 +343,7 @@ bot.on('callback_query', async (query) => {
       handleResetStudySession(bot, users, chatId);
     } else if (data === 'chat') {
       console.log('Triggering handleChatCommand...');
-      handleChatCommand(bot, chatId);
+      handleChatCommand(bot, chatId, users);
     } else {
       console.log('Unknown action received:', data);
       bot.sendMessage(
