@@ -1,7 +1,7 @@
 ﻿# SIMBI Web3 Telegram Bot
 
 ## Overview
-The SIMBI Web3 Telegram Bot is a decentralized study companion that integrates blockchain technology to reward users for learning. Built with Node.js and Ethereum (Base Sepolia), it offers quiz-based learning with token rewards and NFT achievements.
+The SIMBI Web3 Telegram Bot is a decentralized study companion that integrates blockchain technology to reward users for learning with an AI Chat with SIMBI. Built with Node.js and Ethereum (Base Sepolia), it offers quiz-based learning with token rewards and NFT achievements, amongst other features.
 
 ## Features
 
@@ -208,3 +208,6 @@ node scripts/migrateToEncryption.js
 - `/quiz` - Start a quiz to earn tokens
 - `/study_session` - Start a study session to track progress
 - `/help` - Show help information
+
+## Contributors
+- Kingsley Nweke
