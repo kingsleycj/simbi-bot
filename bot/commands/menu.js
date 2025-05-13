@@ -9,19 +9,20 @@ const handleMenuCommand = (bot, chatId) => {
           { text: "🤖 Chat with Simbi", callback_data: 'chat' }
         ],
         [
+          { text: "⏰ Set Reminder", callback_data: 'reminder' },
+          { text: "📚 Study Session", callback_data: 'study_session' }
+
+        ],
+        [
           { text: "📄 View Profile", callback_data: 'profile' },
           { text: "👛 Wallet Info", callback_data: 'wallet' }
         ],
         [
-          { text: "⏰ Set Reminder", callback_data: 'reminder' },
+          { text: "🏅 View Achievements", callback_data: 'achievements' },
           { text: "📊 Track Progress", callback_data: 'progress' }
         ],
         [
-          { text: "🏅 View Achievements", callback_data: 'achievements' },
-          { text: "💡 Motivation", callback_data: 'motivation' }
-        ],
-        [
-          { text: "📚 Study Session", callback_data: 'study_session' },
+          { text: "💡 Motivation", callback_data: 'motivation' },
           { text: "❓ Help", callback_data: 'show_help' }
         ]
       ]
