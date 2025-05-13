@@ -11,7 +11,6 @@ const handleMenuCommand = (bot, chatId) => {
         [
           { text: "⏰ Set Reminder", callback_data: 'reminder' },
           { text: "📚 Study Session", callback_data: 'study_session' }
-
         ],
         [
           { text: "📄 View Profile", callback_data: 'profile' },

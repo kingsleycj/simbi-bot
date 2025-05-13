@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: simbi-telegram-bot
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 16
+      - key: BOT_TOKEN
+        sync: false
+      - key: WEBHOOK_URL
+        sync: false
+      - key: PORT
+        value: 3000
+      - key: GROQ_API_KEY
+        sync: false
+      - key: BASE_SEPOLIA_RPC_URL
+        sync: false
+      - key: PRIVATE_KEY
+        sync: false
+      - key: SIMBIQUIZMANAGER_CA
+        sync: false
+      - key: SIMBITOKEN_CA
+        sync: false
+      - key: SIMBIBADGE_NFT_CA
+        sync: false
+      - key: SIMBICREDENTIAL_NFT_CA
+        sync: false 
