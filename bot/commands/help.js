@@ -43,6 +43,9 @@ If you don't see your earned NFT badges:
 
 *Need More Help?*
 Contact the developer @kingsleycj for assistance
+
+*Want to Visit Our Web App?*
+Click https://simbi-ai.vercel.app/ to access our Web App for more packed features ...
 `;
 
     // First try sending with Markdown
