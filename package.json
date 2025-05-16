@@ -1,6 +1,7 @@
 {
-  "name": "bot2",
+  "name": "simbi-telegram-bot",
   "version": "1.0.0",
+  "description": "SIMBI Web3 Telegram Bot - A decentralized AI study companion with blockchain rewards",
   "type": "module",
   "engines": {
     "node": ">=16.0.0"
@@ -10,9 +11,12 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "compile": "hardhat compile",
     "start": "node --experimental-json-modules index.js",
-    "dev": "node --watch --experimental-json-modules index.js"
+    "dev": "node --watch --experimental-json-modules index.js",
+    "migrate:db": "node migrate.js",
+    "migrate:encrypt": "node scripts/migrateToEncryption.js"
   },
   "dependencies": {
+    "crypto": "^1.0.1",
     "dotenv": "^16.5.0",
     "ethers": "^6.13.7",
     "express": "^5.1.0",
@@ -29,5 +33,23 @@
     "hardhat": "^2.19.4",
     "hardhat-gas-reporter": "^1.0.10",
     "solidity-coverage": "^0.8.5"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kingsleycj/simbi-bot"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "blockchain",
+    "web3",
+    "study",
+    "education",
+    "ai",
+    "ethereum",
+    "base",
+    "nft"
+  ],
+  "author": "Kingsley Nweke",
+  "license": "MIT"
 }
