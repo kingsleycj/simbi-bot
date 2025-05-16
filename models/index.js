@@ -40,6 +40,7 @@ if (dbUrl) {
     console.log('Database connection has been established successfully.');
   } catch (error) {
     console.error('Unable to connect to the database:', error);
+    console.log('ERROR DETAILS:', JSON.stringify(error, null, 2));
   }
 })();
 
