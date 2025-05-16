@@ -13,16 +13,16 @@ if (dbUrl) {
   console.log('Using database connection:', dbUrl.replace(/:\/\/[^:]+:[^@]+@/, '://postgres:****@'));
   
   // Create Sequelize instance for PostgreSQL
-  sequelize = new Sequelize(dbUrl, {
-    dialect: 'postgres',
-    logging: false,
-    dialectOptions: {
-      ssl: process.env.NODE_ENV === 'production' ? {
-        require: true,
-        rejectUnauthorized: false
-      } : false
+sequelize = new Sequelize(dbUrl, {
+  dialect: 'postgres',
+  logging: false,
+  dialectOptions: {
+    ssl: {
+      require: true,
+      rejectUnauthorized: false, // Allow self-signed certs (Neon requires this)
     }
-  });
+  }
+});
 } else {
   // Fallback to SQLite (for development/testing)
   console.log('No DATABASE_URL found, using SQLite database');
