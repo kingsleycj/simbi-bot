@@ -1,15 +1,10 @@
 import { ethers } from 'ethers';
-import { promises as fs } from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
 import dotenv from 'dotenv';
 import { encryptPrivateKey } from '../utils/encryption.js';
+import { getUser, saveUser } from '../db-adapter.js';
 
-// Initialize dotenv and setup __dirname equivalent
+// Initialize dotenv
 dotenv.config();
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 // Add proper ABI for contract interaction
 const QUIZ_MANAGER_ABI = [
@@ -25,21 +20,14 @@ export const handleStartCommand = async (bot, users, chatId, msg) => {
         
         // Debug info for wallet check
         console.log(`Start command received. ChatID: ${chatIdStr}`);
-        console.log(`Users object keys: ${Object.keys(users).join(', ')}`);
-        console.log(`User exists for this chatId: ${!!users[chatIdStr]}`);
-        if (users[chatIdStr]) {
-            console.log(`User has address property: ${!!users[chatIdStr].address}`);
-            if (users[chatIdStr].address) {
-                console.log(`User address: ${users[chatIdStr].address}`);
-            }
-        }
         
-        // Check if user already has a wallet - using string version of chatId
-        if (users[chatIdStr] && users[chatIdStr].address) {
-            const existingWallet = users[chatIdStr];
+        // Check if user already has a wallet - get from database via adapter
+        const existingUser = await getUser(chatIdStr);
+        
+        if (existingUser && existingUser.walletAddress) {
             const message = 
                 '❗ You already have a registered wallet:\n\n' +
-                `Address: \`${existingWallet.address}\`\n\n` +
+                `Address: \`${existingUser.walletAddress}\`\n\n` +
                 '🎮 Use /menu to continue interacting with SIMBI Bot!\n' +
                 '⚠️ If you need to recover your private key, please contact support.';
 
@@ -111,10 +99,10 @@ export const handleStartCommand = async (bot, users, chatId, msg) => {
         // Encrypt the private key before storing
         const encryptedPrivateKey = encryptPrivateKey(wallet.privateKey);
 
-        // Update users object - use string version of chatId consistently
-        users[chatIdStr] = {
-            address: wallet.address,
-            privateKey: encryptedPrivateKey,
+        // Create new user data object
+        const userData = {
+            walletAddress: wallet.address,
+            encryptedPrivateKey,
             createdAt: new Date().toISOString(),
             isRegistered: true,
             firstName,
@@ -127,16 +115,17 @@ export const handleStartCommand = async (bot, users, chatId, msg) => {
                 ongoing: null,
                 history: []
             },
-            completedQuizzes: 0
+            quizzesTaken: 0,
+            quizzesCorrect: 0,
+            inChatMode: false
         };
 
+        // Save to database via adapter
+        await saveUser(chatIdStr, userData);
         console.log(`New user data saved with key: ${chatIdStr}`);
-
-        // Save to users.json
-        await fs.writeFile(
-            path.join(process.cwd(), 'users.json'),
-            JSON.stringify(users, null, 2)
-        );
+        
+        // Update in-memory users object for compatibility
+        users[chatIdStr] = userData;
 
         // Send welcome message with transaction info
         const welcomeMessage = 

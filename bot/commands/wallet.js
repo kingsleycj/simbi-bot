@@ -1,13 +1,8 @@
 import { ethers } from 'ethers';
-import { promises as fs } from 'fs';
-import path from 'path';
 import dotenv from 'dotenv';
-import { decryptPrivateKey } from '../utils/encryption.js';
+import { getUser } from '../db-adapter.js';
 
 dotenv.config();
-
-// Path to users.json file
-const USERS_FILE_PATH = path.join(process.cwd(), 'users.json');
 
 // Token ABI for detailed token information
 const TOKEN_ABI = [
@@ -17,49 +12,13 @@ const TOKEN_ABI = [
   "function name() view returns (string)"
 ];
 
-// Load users data
-async function loadUsers() {
+const handleWalletInfo = async (bot, chatId, msg = null) => {
   try {
-    const data = await fs.readFile(USERS_FILE_PATH, 'utf8');
+    // Load user data from database using adapter
+    const userInfo = await getUser(chatId.toString());
     
-    // Handle empty file case
-    if (!data.trim()) {
-      return {};
-    }
-
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Error loading users:', error);
-    return {};
-  }
-}
-
-// Helper function to get wallet with decrypted private key
-function getWalletFromUserInfo(userInfo) {
-  try {
-    if (!userInfo || !userInfo.privateKey) {
-      throw new Error('No private key found');
-    }
-    
-    // Decrypt the private key
-    const decryptedPrivateKey = decryptPrivateKey(userInfo.privateKey);
-    
-    // Create and return the wallet
-    return new ethers.Wallet(decryptedPrivateKey);
-  } catch (error) {
-    console.error('Error getting wallet:', error);
-    throw new Error('Failed to access wallet');
-  }
-}
-
-const handleWalletInfo = async (bot, chatId) => {
-  try {
-    // Load users to get the wallet address
-    const users = await loadUsers();
-    const userInfo = users[chatId.toString()];
-
     // Check if user has a wallet
-    if (!userInfo || !userInfo.address) {
+    if (!userInfo || !userInfo.walletAddress) {
       return bot.sendMessage(
         chatId,
         "⚠️ You don't have a wallet yet. Use /start to create one.",
@@ -71,14 +30,14 @@ const handleWalletInfo = async (bot, chatId) => {
       );
     }
 
-    const walletAddress = userInfo.address;
+    const walletAddress = userInfo.walletAddress;
     const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
-    const SIMBI_CONTRACT_ADDRESS = process.env.SIMBI_CONTRACT_ADDRESS;
-
-    if (!BASE_SEPOLIA_RPC_URL || !SIMBI_CONTRACT_ADDRESS) {
+    const SIMBI_TOKEN_ADDRESS = process.env.SIMBI_CONTRACT_ADDRESS;
+    
+    if (!BASE_SEPOLIA_RPC_URL) {
       return bot.sendMessage(
         chatId,
-        "⚠️ Configuration error. Please contact support.",
+        "⚠️ Blockchain connection not available. Please try again later.",
         {
           reply_markup: {
             inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
@@ -87,49 +46,63 @@ const handleWalletInfo = async (bot, chatId) => {
       );
     }
 
-    // Send initial message while fetching data
-    await bot.sendMessage(chatId, '🔍 *Fetching your wallet information...*', { parse_mode: 'Markdown' });
-
-    // Initialize provider and contract
+    // Connect to Base Sepolia network
     const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
-    const simbiToken = new ethers.Contract(
-      SIMBI_CONTRACT_ADDRESS,
-      TOKEN_ABI,
-      provider
-    );
-
-    // Fetch token information
-    const [tokenBalance, decimals, symbol, name] = await Promise.all([
-      simbiToken.balanceOf(walletAddress),
-      simbiToken.decimals(),
-      simbiToken.symbol(),
-      simbiToken.name()
-    ]);
-
-    // Get account balance
-    const nativeBalance = await provider.getBalance(walletAddress);
-    const formattedNativeBalance = ethers.formatEther(nativeBalance);
-    const formattedTokenBalance = ethers.formatUnits(tokenBalance, decimals);
-
-    // Blockchain explorer link
-    const explorerUrl = `https://sepolia.basescan.org/address/${walletAddress}`;
-
-    // Generate wallet information
-    const walletInfo = `
+    
+    // Get ETH balance
+    const ethBalance = await provider.getBalance(walletAddress);
+    const formattedEthBalance = ethers.formatEther(ethBalance);
+    
+    // Initialize wallet info message
+    let walletInfo = `
 👛 *Wallet Information*
 
-*Address:* \`${walletAddress}\`
+• Address: \`${walletAddress}\`
+• Base ETH Balance: ${formattedEthBalance} ETH
+`;
 
-*Balances:*
-• ${formattedTokenBalance} ${symbol} (${name})
-• ${formattedNativeBalance} BASE (Base Sepolia)
+    // Check if SIMBI token exists
+    let tokenBalanceInfo = "";
+    if (SIMBI_TOKEN_ADDRESS) {
+      try {
+        const tokenContract = new ethers.Contract(
+          SIMBI_TOKEN_ADDRESS,
+          TOKEN_ABI,
+          provider
+        );
+        
+        // Get token details
+        const [rawBalance, decimals, symbol, name] = await Promise.all([
+          tokenContract.balanceOf(walletAddress),
+          tokenContract.decimals(),
+          tokenContract.symbol(),
+          tokenContract.name()
+        ]);
+        
+        // Format token balance
+        const tokenBalance = Number(ethers.formatUnits(rawBalance, decimals));
+        
+        // Add token information to wallet info
+        tokenBalanceInfo = `
+• ${name} (${symbol}): ${tokenBalance} ${symbol}`;
 
-*Transactions:*
-• View on [Block Explorer](${explorerUrl})
+      } catch (tokenError) {
+        console.error('Error fetching token data:', tokenError);
+        tokenBalanceInfo = `
+• SIMBI Token: Error fetching balance`;
+      }
+    }
+    
+    // Add token balance info to main message
+    walletInfo += tokenBalanceInfo;
+    
+    // Add block explorer link
+    const explorerUrl = "https://sepolia.basescan.org/address/" + walletAddress;
+    walletInfo += `
 
-*Tips:*
-• Earn more ${symbol} by completing quizzes and study sessions
-• Tokens can be used for premium features and rewards in future updates
+🔍 [View on Block Explorer](${explorerUrl})
+
+💡 *Return to your profile to see more details or back to menu.*
 `;
 
     await bot.sendMessage(
@@ -141,10 +114,9 @@ const handleWalletInfo = async (bot, chatId) => {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: "📊 View Progress", callback_data: "progress" },
-              { text: "👤 View Profile", callback_data: "profile" }
-            ],
-            [{ text: "🔙 Back to Menu", callback_data: "menu" }]
+              { text: "👤 Back to Profile", callback_data: "profile" },
+              { text: "🔙 Back to Menu", callback_data: "menu" }
+            ]
           ]
         }
       }
@@ -163,4 +135,4 @@ const handleWalletInfo = async (bot, chatId) => {
   }
 };
 
-export { handleWalletInfo, getWalletFromUserInfo };
+export { handleWalletInfo };

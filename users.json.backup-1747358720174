@@ -1,0 +1,467 @@
+{
+  "406039857": {
+    "address": "0x69704Dc1f6dFfF9024d4B4D49Ccba3961Af25B3a",
+    "privateKey": "5d3194938a628b9ca53d08c4444844eb:aa96bebe7726029632623806c63d481b726dbd0f23d51fa6c90003c5d6f14847a3acb7280442b4a684984dbdebafae23cf09fa9ff145e162582fc92263bce9f20bae65da9006dbb84c430a89278477e7",
+    "createdAt": "2025-05-13T11:58:01.007Z",
+    "isRegistered": true,
+    "firstName": "AJAY",
+    "lastName": "",
+    "username": "Mrcoolxaj",
+    "balance": 0,
+    "tokens": [],
+    "studySessions": {
+      "completed": 0,
+      "ongoing": null,
+      "history": []
+    },
+    "completedQuizzes": 0,
+    "score": 0,
+    "currentQuestionIndex": 1,
+    "category": "government",
+    "quizStartTime": 1747137489353
+  },
+  "714919760": {
+    "address": "0x510CBBaB5CDBf5140168d2Dfe22b5566CFD2360c",
+    "privateKey": "6bc0f67ea3fb93878647341a6b33984b:f7e8cc122d1365e5ad1edace20ec8c12f9a5760a36fb43902ea8c51dc16786f8e7fa5246e98ab593e023574d7d834710972fdaeb9c5162bd8a1f0198740b1d23c5b7040f7302e3b380f69aca31b35121",
+    "createdAt": "2025-05-09T14:39:19.784Z",
+    "isRegistered": true,
+    "firstName": "Bera_Kehn",
+    "lastName": "",
+    "username": "marlian_doctor",
+    "balance": 0,
+    "tokens": [],
+    "studySessions": {
+      "completed": 1,
+      "ongoing": null,
+      "history": [
+        {
+          "startTime": 1746802556217,
+          "endTime": 1746802676467,
+          "duration": 25,
+          "type": "pomodoro"
+        }
+      ],
+      "inProgress": false,
+      "startTime": 1746802556217,
+      "duration": 2
+    },
+    "completedQuizzes": 1
+  },
+  "954121829": {
+    "address": "0x4Adc366b7B0823f1B7d7d359F66c08A3b2FbFD94",
+    "privateKey": "b8e60b6cf4b19c3c3d60cfd09daa6768:870761a29b57332f2edd41a0036684b59c26e6fda8e9ceacc3add40e31c0b908f6c4cd84f32c9292f2b9fb508efca7cb561d8fdbb46cf1de36d39d1579cccc8d2dd77a7a2f25de60f308f4acb011208f",
+    "createdAt": "2025-05-11T20:34:07.413Z",
+    "isRegistered": true,
+    "firstName": "UG",
+    "lastName": "",
+    "username": "eketeUg",
+    "balance": 0,
+    "tokens": [],
+    "studySessions": {
+      "completed": 1,
+      "ongoing": null,
+      "history": [
+        {
+          "startTime": 1746996544341,
+          "endTime": 1746996664601,
+          "duration": 25,
+          "type": "pomodoro"
+        }
+      ],
+      "inProgress": false,
+      "startTime": 1746996544341,
+      "duration": 2
+    },
+    "completedQuizzes": 2,
+    "score": 0,
+    "currentQuestionIndex": 0,
+    "category": "history",
+    "quizStartTime": 1746996130463,
+    "quizScore": 8,
+    "inChatMode": true
+  },
+  "1070910917": {
+    "address": "0xC26cB9aAf9E22319069C907CA497957d4Da447A0",
+    "privateKey": "80f6c3a594e6d2fbc09de381ff3d8888:9f3bd4e3a60bef150a8ea6ea201c1e75339a9efb73f4c08a0b97cb07071dfea9317ac0a38fae721cbed91a39431e69b56812193c62e1303fd47d95057c328dc95060f286e737ea5b94c01574095d8e94",
+    "createdAt": "2025-05-15T15:21:11.997Z",
+    "isRegistered": true,
+    "firstName": "Clemo",
+    "lastName": "",
+    "username": "Clemo08",
+    "balance": 0,
+    "tokens": [],
+    "studySessions": {
+      "completed": 0,
+      "ongoing": null,
+      "history": []
+    },
+    "completedQuizzes": 0
+  },
+  "1592301284": {
+    "address": "0x19A27b6D72AC9E8A265627951C2C95b245c29D40",
+    "privateKey": "c83f1a8e2e704e520949c13b07769660:91a228226bf896902e535ef9a8bed113738795ca7f114bccd9bc9619cdacb74f141d0af2560919ad23c7789767d88d33cac1879d004947a27be7c0b7cc407110b630cc67e86a6743441061269f24872f",
+    "createdAt": "2025-05-11T18:54:04.548Z",
+    "isRegistered": true,
+    "firstName": "Franklin🍅",
+    "lastName": "",
+    "username": "LamiaAlex",
+    "balance": 0,
+    "tokens": [],
+    "studySessions": {
+      "completed": 0,
+      "ongoing": null,
+      "history": []
+    },
+    "completedQuizzes": 4,
+    "score": 0,
+    "currentQuestionIndex": 0,
+    "category": "science",
+    "quizStartTime": 1746989796044,
+    "quizScore": 17,
+    "inChatMode": true
+  },
+  "7866207207": {
+    "address": "0x2a020147f849e1C7ac4322B94835d699Cb60408C",
+    "privateKey": "1690d8a377e59a14993fe38c793ddbf1:4095a5fc78e71c1e96175cd018a985f7d2d3b8a952070e1defd9e366f6fefb447cafc26440441e83113818f1592697897167ae9289767b3a915214e1b0a12252a0b5c0daf86c260eeab8a7fa32ffaccd",
+    "createdAt": "2025-05-09T01:11:48.556Z",
+    "isRegistered": true,
+    "firstName": "Kingsley",
+    "lastName": "NWEKE",
+    "username": "kingsleycj",
+    "balance": 0,
+    "tokens": [],
+    "studySessions": {
+      "completed": 33,
+      "ongoing": null,
+      "history": [
+        {
+          "startTime": 1746753202363,
+          "endTime": 1746753322602,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746753630896,
+          "endTime": 1746753751094,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746777811474,
+          "endTime": 1746777931763,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746869221920,
+          "endTime": 1746869330644,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746875225365,
+          "endTime": 1746875345662,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746877993953,
+          "endTime": 1746878114206,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746878137125,
+          "endTime": 1746878257384,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746879043065,
+          "endTime": 1746879163300,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746880280375,
+          "endTime": 1746880325711,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746886121559,
+          "endTime": 1746886242097,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746886297254,
+          "endTime": 1746886417498,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746886578836,
+          "endTime": 1746886699117,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746886725282,
+          "endTime": 1746886845522,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746887094799,
+          "endTime": 1746887215039,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746904340320,
+          "endTime": 1746904460558,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746915734933,
+          "endTime": 1746915855339,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746916258728,
+          "endTime": 1746916378973,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746988612030,
+          "endTime": 1746988732265,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746988951229,
+          "endTime": 1746989071434,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746989417252,
+          "endTime": 1746989537512,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746989614522,
+          "endTime": 1746989734818,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746990055323,
+          "endTime": 1746990175544,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746990353906,
+          "endTime": 1746990474155,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1746998183633,
+          "endTime": 1746998303986,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1747172518701,
+          "endTime": 1747172638914,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1747172719447,
+          "endTime": 1747172839638,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1747172917461,
+          "endTime": 1747173037687,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1747324473282,
+          "endTime": 1747324593549,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1747324715519,
+          "endTime": 1747324835852,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1747325008734,
+          "endTime": 1747325128950,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1747325434447,
+          "endTime": 1747325554646,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1747325658886,
+          "endTime": 1747325779168,
+          "duration": 25,
+          "type": "pomodoro"
+        },
+        {
+          "startTime": 1747326013246,
+          "endTime": 1747326133487,
+          "duration": 25,
+          "type": "pomodoro"
+        }
+      ],
+      "inProgress": false,
+      "startTime": 1747326013246,
+      "duration": 2
+    },
+    "completedQuizzes": 13,
+    "score": 0,
+    "currentQuestionIndex": 0,
+    "category": "general",
+    "quizStartTime": 1746885796879,
+    "quizScore": 310,
+    "inChatMode": true
+  },
+  "8041033867": {
+    "address": "0x551A2382dd62A34b36aD515Ab71746730766c300",
+    "privateKey": "2bb9ec5c2c21b796e58fc1aa295a5438:6e8aa99a161253fb1dc311876e38b7e1f911089ea63181d90927e1d63ac409c3e346783fa3da93686ce60a122db751aa7c244c11eb03743e111a4e842aeb8f8712b4d88a5798ced9d400521fdf7b384a",
+    "createdAt": "2025-05-10T19:03:19.178Z",
+    "isRegistered": true,
+    "firstName": "Akuabata",
+    "lastName": "Okoye",
+    "username": "",
+    "balance": 0,
+    "tokens": [],
+    "studySessions": {
+      "completed": 0,
+      "ongoing": null,
+      "history": []
+    },
+    "completedQuizzes": 2,
+    "score": 0,
+    "currentQuestionIndex": 0,
+    "category": "science",
+    "quizStartTime": 1746903922223,
+    "quizScore": 12
+  },
+  "6147556558": {
+    "address": "0xD1E9c91637b27cF0F9742a2B0B368D76c14366e5",
+    "privateKey": "c4965b63fe29f7e4895767cc3fcfe80f:da0646204b6dac7ff8166b0379ea7c137d081a1f999c26bcff7047721494b642ca36f39db6d780f174e60e56624f49edbcc3f7525680fda92cd3b5acc316b0a50b19974a7f0bd8c2ee44b52005e2b715",
+    "createdAt": "2025-05-11T20:37:21.032Z",
+    "isRegistered": true,
+    "firstName": "Okafor",
+    "lastName": "Pleasant",
+    "username": "",
+    "balance": 0,
+    "tokens": [],
+    "studySessions": {
+      "completed": 1,
+      "ongoing": null,
+      "history": [
+        {
+          "startTime": 1746995983171,
+          "endTime": 1746996103430,
+          "duration": 25,
+          "type": "pomodoro"
+        }
+      ],
+      "inProgress": false,
+      "startTime": 1746995983171,
+      "duration": 2
+    },
+    "completedQuizzes": 0,
+    "score": 0,
+    "currentQuestionIndex": 0,
+    "category": "science",
+    "quizStartTime": 1747323812078
+  },
+  "8053430578": {
+    "address": "0x0DaD93bE90C8A446B88DDeCE307649f65c15D0Ff",
+    "privateKey": "865a3ae1372d2425e2686dfa4ba293a0:95a97eb7b6f8e2f715f083fb1165c8bdd6f9a2e94b006a7375c8c7a48e90c01fce3a0f2d10cd0c6bdcc15c5564ac1557fb1c229c52b29e8d0988c75e6e0d0a5f07571b95d8e15a34f71281cdb6e22b5c",
+    "createdAt": "2025-05-13T22:18:24.765Z",
+    "isRegistered": true,
+    "firstName": "Immaculate",
+    "lastName": "Desmond",
+    "username": "",
+    "balance": 0,
+    "tokens": [],
+    "studySessions": {
+      "completed": 1,
+      "ongoing": null,
+      "history": [
+        {
+          "startTime": 1747175976514,
+          "endTime": 1747176096799,
+          "duration": 25,
+          "type": "pomodoro"
+        }
+      ],
+      "inProgress": false,
+      "startTime": 1747175976514,
+      "duration": 2
+    },
+    "completedQuizzes": 0,
+    "score": 1,
+    "currentQuestionIndex": 3,
+    "category": "government",
+    "quizStartTime": 1747174821056
+  },
+  "6004507405": {
+    "address": "0xB5FB1E99649CB4B8d2FE69aA40C47a870D994255",
+    "privateKey": "30f05a4c431024e0542953f277a43c05:5aa4fa840286edc589d1a780075580517e981dcda070ee8f01a28dc3cb593fb04b295b024a1a191bc02d179727e89cb6a10d91bde7423c2b5566270f32d4f07eb9e9167d181e6afddff40d0da58e8ea5",
+    "createdAt": "2025-05-15T15:22:53.918Z",
+    "isRegistered": true,
+    "firstName": "Daniel",
+    "lastName": "Nwolu",
+    "username": "DanielNwolu",
+    "balance": 0,
+    "tokens": [],
+    "studySessions": {
+      "completed": 0,
+      "ongoing": null,
+      "history": []
+    },
+    "completedQuizzes": 0,
+    "inChatMode": false
+  },
+  "6296880480": {
+    "address": "0x38978B1A98beB4d6E0A1c112797c051bC1739278",
+    "privateKey": "cc8b3b731aefc17f4834215d738c77c1:d8a1b96b2f280ad1d8523f26489e26566a36e65d64e1d635843583d3dfb1c8bc77bc03dca6ef5c10814f18d1c095b8d3ca44eb90a7eb081447501f651b8ed6644e91e7d46b4a9067b62f342d1d9b3c94",
+    "createdAt": "2025-05-15T16:40:19.474Z",
+    "isRegistered": true,
+    "firstName": "Ashley",
+    "lastName": "Ashstone",
+    "username": "HalseyAshlee",
+    "balance": 0,
+    "tokens": [],
+    "studySessions": {
+      "completed": 0,
+      "ongoing": null,
+      "history": []
+    },
+    "completedQuizzes": 0
+  }
+}
