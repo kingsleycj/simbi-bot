@@ -1,4 +1,4 @@
-// This module handles the /sync command for a Telegram bot, allowing users to sync their Telegram account with a web app account.
+// This module handles the /sync command for a Telegram bot, allowing users to sync their Telegram account with the SIMBI web app account.
 // It prompts the user for their web app user ID and updates the user data accordingly.
 const handleSyncCommand = (bot, users, chatId, saveUsers) => {
   bot.sendMessage(chatId, '🔗 Please enter your web app user ID to sync your account:', { reply_markup: { force_reply: true } })

@@ -7,10 +7,8 @@ index.html
 package-lock.json
 temp/
 TROUBLESHOOTING.md  
-MIGRATION_GUIDE.md
-bot/db-adapter.js
 db-test.js
-models/
 scripts/local-migrate.js
 scripts/migrate-to-postgres.js
 users.json.backup-1747187165829
+users.json.backup-1747359205125

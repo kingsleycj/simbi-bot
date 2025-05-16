@@ -7,6 +7,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { getUser } from '../db-adapter.js';
 
 dotenv.config();
 
@@ -83,23 +84,27 @@ const generateProgressLink = async (userAddress) => {
 
 const handleTrackProgressCommand = async (bot, users, chatId) => {
   try {
-    // Debug the users object
-    console.log(`TrackProgress - Chat ID: ${chatId}, Users keys:`, Object.keys(users));
-    console.log(`User data exists: ${!!users[chatId]}`);
-    if (users[chatId]) {
-      console.log(`User has wallet: ${!!users[chatId].address}, Wallet: ${users[chatId].address}`);
+    // Debug logged information
+    console.log(`TrackProgress - Chat ID: ${chatId}`);
+    
+    const SIMBI_CONTRACT_ADDRESS = process.env.SIMBI_CONTRACT_ADDRESS;
+    const SIMBIBADGE_NFT_CA = process.env.SIMBIBADGE_NFT_CA;
+    const SIMBIQUIZMANAGER_CA = process.env.SIMBIQUIZMANAGER_CA;
+    const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
+
+    // Ensure chatId is a string and get user data from database
+    const userChatId = chatId.toString();
+    const userInfo = await getUser(userChatId);
+    
+    console.log(`User data exists: ${!!userInfo}`);
+    if (userInfo) {
+      console.log(`User has wallet: ${!!userInfo.walletAddress}, Wallet: ${userInfo.walletAddress}`);
     }
     
-  const SIMBI_CONTRACT_ADDRESS = process.env.SIMBI_CONTRACT_ADDRESS;
-  const SIMBIBADGE_NFT_CA = process.env.SIMBIBADGE_NFT_CA;
-    const SIMBIQUIZMANAGER_CA = process.env.SIMBIQUIZMANAGER_CA;
-  const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
+    // Get wallet address from user data
+    const userAddress = userInfo?.walletAddress;
 
-    // First ensure we stringify the chatId for consistency
-    const userChatId = chatId.toString();
-    const userAddress = users[userChatId]?.address;
-
-  if (!userAddress) {
+    if (!userAddress) {
       console.error('No wallet address found for user', userChatId);
       return bot.sendMessage(
         chatId, 
@@ -132,17 +137,17 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
     // Send initial message while fetching data
     await bot.sendMessage(chatId, '🔍 *Fetching your on-chain progress...*', { parse_mode: 'Markdown' });
 
-  const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
+    const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
     
     // Initialize contracts
-  const simbiToken = new ethers.Contract(
-    SIMBI_CONTRACT_ADDRESS,
+    const simbiToken = new ethers.Contract(
+      SIMBI_CONTRACT_ADDRESS,
       TOKEN_ABI,
-    provider
-  );
+      provider
+    );
 
-  const simbiBadgeNFT = new ethers.Contract(
-    SIMBIBADGE_NFT_CA,
+    const simbiBadgeNFT = new ethers.Contract(
+      SIMBIBADGE_NFT_CA,
       BADGE_NFT_ABI,
       provider
     );
@@ -150,8 +155,8 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
     const quizManager = new ethers.Contract(
       SIMBIQUIZMANAGER_CA,
       QUIZ_MANAGER_ABI,
-    provider
-  );
+      provider
+    );
 
     // Fetch token data
     const [
@@ -159,14 +164,14 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
       decimals,
       symbol
     ] = await Promise.all([
-    simbiToken.balanceOf(userAddress),
+      simbiToken.balanceOf(userAddress),
       simbiToken.decimals(),
       simbiToken.symbol()
     ]);
 
-    // Get quiz scores from user data
-    const completedQuizzes = users[userChatId]?.completedQuizzes || 0;
-    const quizScore = users[userChatId]?.quizScore || 0;
+    // Get quiz scores from user data in the database
+    const completedQuizzes = userInfo?.completedQuizzes || 0;
+    const quizScore = userInfo?.quizScore || 0;
     console.log('Local quiz data:', { completedQuizzes, quizScore });
 
     // Fetch quiz stats using try/catch to attempt different function names
@@ -282,7 +287,7 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
         console.error('Error getting attempt counts:', attemptError);
         
         // Better fallback - don't throw, use local data instead
-        const completedSessions = users[userChatId]?.studySessions?.completed || 0;
+        const completedSessions = userInfo?.studySessions?.completed || 0;
         console.log('Using local study sessions as fallback:', completedSessions);
         bronze = completedSessions;
         silver = completedSessions;
@@ -331,7 +336,7 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
       console.error('Error fetching badge data from contract:', error);
       
       // IMPROVED FALLBACK: Use actual completed sessions for all tiers
-      const completedSessions = users[userChatId]?.studySessions?.completed || 0;
+      const completedSessions = userInfo?.studySessions?.completed || 0;
       console.log('Using local data as fallback - completed sessions:', completedSessions);
       
       bronze = completedSessions;
@@ -361,7 +366,7 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
 
 🏆 *Study Achievements:*
 • Total Quiz Completions: ${completedQuizzes}
-• Study Sessions: ${users[userChatId]?.studySessions?.completed || 0}
+• Study Sessions: ${userInfo?.studySessions?.completed || 0}
 • Cumulative Quiz Score: ${quizScore}
 
 🏅 *NFT Badges Progress:*
@@ -432,16 +437,24 @@ ${eligibleTier !== null ? `\n✨ You are eligible for the ${eligibleTier === 0 ?
 
 const handleAchievementNFTs = async (bot, users, chatId) => {
   try {
-    console.log(`AchievementNFTs - Chat ID: ${chatId}, Users keys:`, Object.keys(users));
+    console.log(`AchievementNFTs - Chat ID: ${chatId}`);
     
-  const SIMBIBADGE_NFT_CA = process.env.SIMBIBADGE_NFT_CA;
-  const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
+    const SIMBIBADGE_NFT_CA = process.env.SIMBIBADGE_NFT_CA;
+    const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
 
-    // First ensure we stringify the chatId for consistency
+    // Ensure chatId is a string and get user data from database
     const userChatId = chatId.toString();
-    const userAddress = users[userChatId]?.address;
+    const userInfo = await getUser(userChatId);
+    
+    console.log(`User data exists: ${!!userInfo}`);
+    if (userInfo) {
+      console.log(`User has wallet: ${!!userInfo.walletAddress}, Wallet: ${userInfo.walletAddress}`);
+    }
+    
+    // Get wallet address from user data
+    const userAddress = userInfo?.walletAddress;
 
-  if (!userAddress) {
+    if (!userAddress) {
       console.error('No wallet address found for user', userChatId);
       return bot.sendMessage(
         chatId, 
@@ -455,10 +468,10 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
           }
         }
       );
-  }
+    }
 
-  if (!SIMBIBADGE_NFT_CA) {
-    console.error('SIMBIBADGE_NFT_CA is not defined or invalid.');
+    if (!SIMBIBADGE_NFT_CA) {
+      console.error('SIMBIBADGE_NFT_CA is not defined or invalid.');
       return bot.sendMessage(
         chatId, 
         '⚠️ Configuration error: NFT contract address is missing. Please contact support.',
@@ -474,12 +487,12 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
     await bot.sendMessage(chatId, '🔍 *Fetching your achievement NFTs...*', { parse_mode: 'Markdown' });
 
     // Initialize provider
-  const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
-  const simbiBadgeNFT = new ethers.Contract(
-    SIMBIBADGE_NFT_CA,
+    const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
+    const simbiBadgeNFT = new ethers.Contract(
+      SIMBIBADGE_NFT_CA,
       BADGE_NFT_ABI,
-    provider
-  );
+      provider
+    );
 
     // COMPLETELY REVISED NFT BADGE DATA FETCHING for achievements
     console.log('Fetching NFT badge achievement data...');
@@ -488,8 +501,8 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
     let eligibleTier = null;
     
     // Get quiz scores from user data
-    const completedQuizzes = users[userChatId]?.completedQuizzes || 0;
-    const quizScore = users[userChatId]?.quizScore || 0;
+    const completedQuizzes = userInfo?.completedQuizzes || 0;
+    const quizScore = userInfo?.quizScore || 0;
     console.log('Using quiz data for achievements:', { completedQuizzes, quizScore });
 
     try {
@@ -560,7 +573,7 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
         console.error('Error getting attempt counts:', attemptError);
         
         // Better fallback - don't throw, use local data instead
-        const completedSessions = users[userChatId]?.studySessions?.completed || 0;
+        const completedSessions = userInfo?.studySessions?.completed || 0;
         console.log('Using local study sessions as fallback:', completedSessions);
         bronze = completedSessions;
         silver = completedSessions;
@@ -609,7 +622,7 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
       console.error('Error fetching badge data from contract:', error);
       
       // IMPROVED FALLBACK: Use actual completed sessions for all tiers
-      const completedSessions = users[userChatId]?.studySessions?.completed || 0;
+      const completedSessions = userInfo?.studySessions?.completed || 0;
       console.log('Using local data as fallback - completed sessions:', completedSessions);
       
       bronze = completedSessions;
@@ -705,13 +718,13 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
 // Handle share progress callback
 const handleShareProgress = async (bot, users, chatId) => {
   try {
-    console.log(`ShareProgress - Chat ID: ${chatId}, Users keys:`, Object.keys(users));
+    console.log(`ShareProgress - Chat ID: ${chatId}`);
     
-    // First ensure we stringify the chatId for consistency
+    // Ensure chatId is a string and get user data from database
     const userChatId = chatId.toString();
-    const userAddress = users[userChatId]?.address;
+    const userInfo = await getUser(userChatId);
     
-    if (!userAddress) {
+    if (!userInfo || !userInfo.walletAddress) {
       console.error('No wallet address found for user', userChatId);
       return bot.sendMessage(
         chatId, 
@@ -728,7 +741,7 @@ const handleShareProgress = async (bot, users, chatId) => {
     }
     
     // Generate shareable progress link
-    const { explorerUrl, qrCodeFilePath } = await generateProgressLink(userAddress);
+    const { explorerUrl, qrCodeFilePath } = await generateProgressLink(userInfo.walletAddress);
     
     // Create message with share options
     const shareMessage = `
@@ -801,11 +814,11 @@ const mintNFTBadge = async (bot, users, chatId, tier) => {
     const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
     const PRIVATE_KEY = process.env.PRIVATE_KEY;
 
-    // First ensure we stringify the chatId for consistency
+    // Ensure chatId is a string and get user data from database
     const userChatId = chatId.toString();
-    const userAddress = users[userChatId]?.address;
+    const userInfo = await getUser(userChatId);
 
-    if (!userAddress) {
+    if (!userInfo || !userInfo.walletAddress) {
       console.error('No wallet address found for user', userChatId);
       return bot.sendMessage(
         chatId, 
@@ -869,7 +882,7 @@ const mintNFTBadge = async (bot, users, chatId, tier) => {
     
     // Verify user is eligible for the specified tier
     try {
-      const eligibleTier = await badgeNFT.getEligibleTier(userAddress);
+      const eligibleTier = await badgeNFT.getEligibleTier(userInfo.walletAddress);
       console.log(`User is eligible for tier: ${eligibleTier}`);
       
       if (eligibleTier < tier) {
@@ -913,7 +926,7 @@ const mintNFTBadge = async (bot, users, chatId, tier) => {
     // Attempt to mint the NFT
     try {
       const tx = await badgeNFT.safeMint(
-        userAddress,
+        userInfo.walletAddress,
         tier,
         {
           gasLimit: 500000n,
@@ -939,7 +952,7 @@ const mintNFTBadge = async (bot, users, chatId, tier) => {
         let badgeImage = null;
         try {
           // Get latest token ID (could be different depending on contract implementation)
-          const nftBalance = await badgeNFT.balanceOf(userAddress);
+          const nftBalance = await badgeNFT.balanceOf(userInfo.walletAddress);
           const baseUri = await badgeNFT.getTierBaseURI(tier);
           
           // Extract IPFS URI if available
