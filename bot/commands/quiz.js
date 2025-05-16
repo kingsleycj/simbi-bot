@@ -252,7 +252,7 @@ const handleAnswerCallback = async (bot, users, chatId, data) => {
     if (!data.startsWith('answer_')) {
       return;
     }
-    
+
     const selectedAnswer = parseInt(data.split('_')[1], 10);
     const { category, currentQuestionIndex } = userInfo;
     
@@ -283,7 +283,11 @@ const handleAnswerCallback = async (bot, users, chatId, data) => {
       );
     }
     
-    const correctAnswerIndex = currentQuiz.correctAnswerIndex;
+    // Get the correct answer
+    const correctAnswerText = currentQuiz.answer;
+    const options = currentQuiz.options || [];
+    const correctAnswerIndex = options.findIndex(option => option === correctAnswerText);
+    
     const isCorrect = selectedAnswer === correctAnswerIndex;
     
     // Update score
@@ -303,7 +307,7 @@ const handleAnswerCallback = async (bot, users, chatId, data) => {
     // Show result of the current question
     const resultMessage = isCorrect
       ? '✅ Correct answer!'
-      : `❌ Incorrect. The correct answer was: ${currentQuiz.answers[correctAnswerIndex]}`;
+      : `❌ Incorrect. The correct answer was: ${correctAnswerText}`;
     
     await bot.sendMessage(chatId, resultMessage);
     
@@ -379,7 +383,7 @@ ${currentQuiz.question}
     const options = {
       parse_mode: 'Markdown',
       reply_markup: {
-        inline_keyboard: currentQuiz.answers.map((answer, index) => [
+        inline_keyboard: (currentQuiz.options || []).map((answer, index) => [
           { text: answer, callback_data: `answer_${index}` }
         ])
       }
@@ -423,6 +427,17 @@ const completeQuiz = async (bot, chatId, score, totalQuestions) => {
     
     // Format the score for display
     const formattedScore = score;
+    
+    // Increment completedQuizzes counter
+    const currentCompleted = userInfo.completedQuizzes || 0;
+    const updatedUserInfo = {
+      ...userInfo,
+      completedQuizzes: currentCompleted + 1
+    };
+    
+    // Save updated user data to database
+    await saveUser(chatId, updatedUserInfo);
+    console.log(`Quiz completed. User now has ${updatedUserInfo.completedQuizzes} completed quizzes.`);
     
     // Show loading message while we process the blockchain reward
     const loadingMessage = await bot.sendMessage(chatId, "🔄 Processing your quiz results and token reward...");
@@ -603,61 +618,34 @@ const handleTokenReward = async (bot, chatId, userAddress, finalScore) => {
             
             // Update quiz stats in the background (non-blocking)
             try {
-                // Always update the local user data first
-                const usersFile = path.join(process.cwd(), 'users.json');
-                const userData = await fs.readFile(usersFile, 'utf8');
-                const updatedUsers = JSON.parse(userData);
+                // Get the current user data
+                const userInfo = await getUser(chatId);
+                
+                // Create an updated user object
+                const updatedUserInfo = { ...userInfo };
                 
                 // Add or increment the completedQuizzes counter
-                if (updatedUsers[chatId]) {
-                    if (!updatedUsers[chatId].completedQuizzes) {
-                        updatedUsers[chatId].completedQuizzes = 1;
-                    } else {
-                        updatedUsers[chatId].completedQuizzes += 1;
-                    }
-                    
-                    // Add or update quizScore
-                    if (!updatedUsers[chatId].quizScore) {
-                        updatedUsers[chatId].quizScore = finalScore;
-                    } else {
-                        updatedUsers[chatId].quizScore += finalScore;
-                    }
-                    
-                    await fs.writeFile(usersFile, JSON.stringify(updatedUsers, null, 2));
-                    console.log(`Quiz stats saved. User now has ${updatedUsers[chatId].completedQuizzes} completed quizzes with score ${updatedUsers[chatId].quizScore}`);
+                if (!updatedUserInfo.completedQuizzes) {
+                    updatedUserInfo.completedQuizzes = 1;
+                } else {
+                    updatedUserInfo.completedQuizzes += 1;
                 }
+                
+                // Add or update quizScore
+                if (!updatedUserInfo.quizScore) {
+                    updatedUserInfo.quizScore = finalScore;
+                } else {
+                    updatedUserInfo.quizScore += finalScore;
+                }
+                
+                // Save the updated user data to the database
+                await saveUser(chatId, updatedUserInfo);
+                console.log(`Quiz stats saved to database. User now has ${updatedUserInfo.completedQuizzes} completed quizzes with score ${updatedUserInfo.quizScore}`);
                 
                 // Now try to update on-chain stats
                 updateQuizStats(botWallet, process.env.SIMBIQUIZMANAGER_CA, userAddress, finalScore);
             } catch (e) {
                 console.log('Background quiz stats update failed (non-critical):', e.message);
-            }
-            
-            // Keep the user data in memory
-            try {
-                const usersFile = path.join(process.cwd(), 'users.json');
-                const userData = await fs.readFile(usersFile, 'utf8');
-                const updatedUsers = JSON.parse(userData);
-                
-                // Keep the user data in memory
-                if (updatedUsers[chatId] && !users[chatId]) {
-                    users[chatId] = updatedUsers[chatId];
-                }
-                
-                // Ensure completedQuizzes is updated and saved to file
-                if (users[chatId]) {
-                    if (!users[chatId].completedQuizzes) {
-                        users[chatId].completedQuizzes = 1;
-                    } else {
-                        users[chatId].completedQuizzes += 1;
-                    }
-                    
-                    // Save changes back to file
-                    await fs.writeFile(usersFile, JSON.stringify(updatedUsers, null, 2));
-                    console.log(`Quiz completion saved. User now has ${users[chatId].completedQuizzes} completed quizzes`);
-                }
-            } catch (e) {
-                console.error('Error updating completed quizzes:', e);
             }
             
             // Redirect to menu to reset state and ensure data consistency
