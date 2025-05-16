@@ -29,7 +29,7 @@ services:
       - key: SIMBI_CREDENTIAL_NFT
         sync: false
       - key: DATABASE_URL
-        sync: false
+        sync: true
       - key: ENCRYPTION_KEY
         sync: false
       - key: MIGRATE_FROM_JSON
