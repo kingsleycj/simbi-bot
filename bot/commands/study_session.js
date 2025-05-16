@@ -1,14 +1,10 @@
 // This file handles the study session command and callbacks
 import { ethers } from 'ethers';
-import { promises as fs } from 'fs';
-import path from 'path';
 import dotenv from 'dotenv';
+import { getUser, saveUser, loadUsers, saveUsers } from '../db-adapter.js';
 
 // Initialize dotenv
 dotenv.config();
-
-// Path to users.json file
-const USERS_FILE_PATH = path.join(process.cwd(), 'users.json');
 
 // Contract ABIs
 const QUIZ_MANAGER_ABI = [
@@ -28,37 +24,6 @@ const BADGE_NFT_ABI = [
     "function getAttemptCounts(address user) external view returns (uint256 bronze, uint256 silver, uint256 gold)",
     "function getTierBaseURI(uint8 tier) external view returns (string memory)"
 ];
-
-// Load users data
-async function loadUsers() {
-    try {
-        const data = await fs.readFile(USERS_FILE_PATH, 'utf8');
-        
-        // Handle empty file case
-        if (!data.trim()) {
-            await fs.writeFile(USERS_FILE_PATH, '{}');
-            return {};
-        }
-
-        return JSON.parse(data);
-    } catch (error) {
-        if (error.code === 'ENOENT' || error instanceof SyntaxError) {
-            await fs.writeFile(USERS_FILE_PATH, '{}');
-            return {};
-        }
-        console.error('Error loading users:', error);
-        return {};
-    }
-}
-
-// Save users data
-async function saveUsers(users) {
-    try {
-        await fs.writeFile(USERS_FILE_PATH, JSON.stringify(users, null, 2));
-    } catch (error) {
-        console.error('Error saving users data:', error);
-    }
-}
 
 // Verify environment variables
 const verifyEnvironment = () => {
@@ -128,28 +93,12 @@ const handleStudySessionCommand = async (bot, users, chatId) => {
         // Debug info
         console.log('\n=== Study Session Command Debug ===');
         console.log('Chat ID:', chatId);
-        console.log('Users object available:', !!users);
         
-        // Always load fresh user data
-        const freshUsers = await loadUsers();
-        console.log('Fresh users keys:', Object.keys(freshUsers));
-        
-        // Ensure consistent string format for chatId
-        const chatIdStr = chatId.toString();
-        
-        // CRITICAL FIX: Always update in-memory users with fresh data
-        if (freshUsers[chatIdStr]) {
-            users[chatIdStr] = freshUsers[chatIdStr];
-        }
-        
-        console.log('Updated users keys:', Object.keys(users));
-        
-        // Get user info using consistent chatId
-        const userInfo = users[chatIdStr];
-        console.log('User exists:', !!userInfo);
+        // Get user data from database
+        const userInfo = await getUser(chatId.toString());
         
         // Check if user has a wallet
-        if (!userInfo || !userInfo.address) {
+        if (!userInfo || !userInfo.walletAddress) {
             console.log('No wallet found for user');
             return bot.sendMessage(
                 chatId,
@@ -162,8 +111,9 @@ const handleStudySessionCommand = async (bot, users, chatId) => {
             );
         }
         
-        console.log('User wallet address:', userInfo.address);
+        console.log('User wallet address:', userInfo.walletAddress);
 
+        // Check for and reset stale study sessions
         // IMPROVED RESET LOGIC: Check for and reset stale study sessions
         if (userInfo.studySessions && userInfo.studySessions.inProgress) {
             console.log('Detected in-progress study session, checking if stale...');
@@ -328,13 +278,13 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
         }
         
         if (users[chatIdStr]) {
-            console.log('User address exists:', users[chatIdStr].address ? 'Yes' : 'No');
-            console.log('User wallet address:', users[chatIdStr].address);
+            console.log('User address exists:', users[chatIdStr].walletAddress ? 'Yes' : 'No');
+            console.log('User wallet address:', users[chatIdStr].walletAddress);
         }
         
         // Check if the user has a valid wallet
         const userInfo = users[chatIdStr];
-        if (!userInfo || !userInfo.address) {
+        if (!userInfo || !userInfo.walletAddress) {
             return bot.sendMessage(
                 chatId,
                 "⚠️ You need to create a wallet first. Use the /start command to set up your wallet.",
@@ -464,7 +414,7 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
                     
                     // IMPROVED ORDER: Record session completion first for badge tracking
                     try {
-                        await checkBadgeMilestone(bot, chatId, currentUserInfo.address, currentUserInfo.studySessions.completed);
+                        await checkBadgeMilestone(bot, chatId, currentUserInfo.walletAddress, currentUserInfo.studySessions.completed);
                     } catch (badgeError) {
                         console.error('Error checking badge milestone:', badgeError);
                         // Don't stop execution if badge check fails
@@ -472,7 +422,7 @@ const handleStudySessionCallback = async (bot, users, chatId, data) => {
                     
                     // Then reward tokens
                     try {
-                        await rewardStudySession(bot, chatId, currentUserInfo.address);
+                        await rewardStudySession(bot, chatId, currentUserInfo.walletAddress);
                     } catch (rewardError) {
                         console.error('Error rewarding study session:', rewardError);
                         // Send a message if reward fails

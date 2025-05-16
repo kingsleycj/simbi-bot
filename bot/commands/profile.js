@@ -1,12 +1,8 @@
 import { ethers } from 'ethers';
-import { promises as fs } from 'fs';
-import path from 'path';
 import dotenv from 'dotenv';
+import { getUser } from '../db-adapter.js';
 
 dotenv.config();
-
-// Path to users.json file
-const USERS_FILE_PATH = path.join(process.cwd(), 'users.json');
 
 // Define Quiz Manager ABI for contract interaction
 const QUIZ_MANAGER_ABI = [
@@ -18,23 +14,6 @@ const QUIZ_MANAGER_ABI = [
   "function recordQuizCompletion(address user, uint256 score) external",
   "function updateQuizStats(address user, uint256 score) external"
 ];
-
-// Load users data
-async function loadUsers() {
-  try {
-    const data = await fs.readFile(USERS_FILE_PATH, 'utf8');
-    
-    // Handle empty file case
-    if (!data.trim()) {
-      return {};
-    }
-
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Error loading users:', error);
-    return {};
-  }
-}
 
 // Function to get blockchain quiz data
 async function getOnChainQuizData(userAddress) {
@@ -93,9 +72,8 @@ async function getOnChainQuizData(userAddress) {
 
 const handleProfileInfo = async (bot, chatId, msg = null) => {
   try {
-    // Load users to get the wallet address
-    const users = await loadUsers();
-    const userInfo = users[chatId.toString()];
+    // Load user data from database using adapter
+    const userInfo = await getUser(chatId.toString());
     
     console.log('Profile - User Info:', userInfo ? 'Found' : 'Not found');
     if (userInfo) {
@@ -103,7 +81,7 @@ const handleProfileInfo = async (bot, chatId, msg = null) => {
     }
 
     // Only check if user has a wallet address, not firstName
-    if (!userInfo || !userInfo.address) {
+    if (!userInfo || !userInfo.walletAddress) {
       return bot.sendMessage(
         chatId,
         "⚠️ You don't have a wallet yet. Use /start to create one.",
@@ -123,7 +101,7 @@ const handleProfileInfo = async (bot, chatId, msg = null) => {
     const lastName = userInfo.lastName || "Not provided";
     const username = userInfo.username || "Not set";
     
-    const walletAddress = userInfo.address;
+    const walletAddress = userInfo.walletAddress;
     
     // Fetch quiz data from blockchain for accuracy
     const onChainData = await getOnChainQuizData(walletAddress);

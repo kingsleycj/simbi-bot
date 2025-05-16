@@ -1,10 +1,9 @@
 import TelegramBot from 'node-telegram-bot-api';
 import express from 'express';
-import { promises as fs } from 'fs';
-import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import dotenv from 'dotenv';
+import { loadUsers, saveUsers, getAllUsers, saveUser } from './bot/db-adapter.js';
 
 // Initialize dotenv
 dotenv.config();
@@ -38,31 +37,12 @@ console.log('GROQ_API_KEY:', process.env.GROQ_API_KEY ? 'Present' : 'Missing');
 // === CONFIG ===
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
-const USERS_DB_FILE = './users.json';
-
-async function initializeUsersFile() {
-  const usersPath = path.join(__dirname, 'users.json');
-  try {
-    await fs.access(usersPath);
-    const data = await fs.readFile(usersPath, 'utf8');
-    try {
-      JSON.parse(data);
-    } catch (e) {
-      console.log('Invalid JSON in users.json, recreating...');
-      await fs.writeFile(usersPath, '{}', 'utf8');
-    }
-  } catch (error) {
-    console.log('Creating new users.json file...');
-    await fs.writeFile(usersPath, '{}', 'utf8');
-  }
-}
 
 // Initialize Express app
 const app = express();
 app.use(express.json());
 
 // Initialize Telegram Bot with webhook (no polling)
-await initializeUsersFile();
 const bot = new TelegramBot(BOT_TOKEN, { polling: false });
 
 // Set Webhook URL
@@ -78,41 +58,12 @@ bot.setWebHook(`${WEBHOOK_URL}${webhookPath}`)
 // === Load or Initialize User Database ===
 let users = {};
 
-// Function to load users from file
-async function loadUsers() {
-  try {
-    console.log('Loading users from file...');
-    const data = await fs.readFile(USERS_DB_FILE, 'utf8');
-    if (!data.trim()) {
-      return {};
-    }
-    const parsedUsers = JSON.parse(data);
-    console.log('Users loaded successfully');
-    return parsedUsers;
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      await fs.writeFile(USERS_DB_FILE, JSON.stringify({}));
-      return {};
-    } else {
-      console.error('Error loading users:', error);
-      return {};
-    }
-  }
-}
-
 // Initialize users on startup
 (async () => {
   users = await loadUsers();
 })();
 
-// === Save Users Function ===
-async function saveUsers() {
-  await fs.writeFile(USERS_DB_FILE, JSON.stringify(users, null, 2));
-}
-
 // Make sure all chat IDs are consistently strings when used for accessing user data
-// This should be placed before command handlers are defined
-
 function ensureUserConsistency() {
   try {
     // Convert all numeric chat IDs to strings in the users object
@@ -135,7 +86,7 @@ function ensureUserConsistency() {
       });
       
       // Save the updated users object
-      saveUsers();
+      saveUsers(users);
     }
   } catch (error) {
     console.error('Error ensuring user data consistency:', error);
@@ -145,7 +96,7 @@ function ensureUserConsistency() {
 // Call this before setting up command handlers
 ensureUserConsistency();
 
-// Update command handlers
+// Update command handlers to use saveUsers function from db-adapter
 bot.onText(/\/start/, (msg) => handleStartCommand(bot, users, msg.chat.id.toString(), msg));
 bot.onText(/\/menu/, (msg) => handleMenuCommand(bot, msg.chat.id.toString()));
 bot.onText(/\/quiz/, (msg) => handleQuizCommand(bot, users, msg.chat.id.toString(), process.env.SIMBIQUIZMANAGER_CA, process.env.PRIVATE_KEY, process.env.BASE_SEPOLIA_RPC_URL));
@@ -175,6 +126,7 @@ bot.on('message', (msg) => {
   // Create a user context for chat if it doesn't exist
   if (!users[chatId]) {
     users[chatId] = {};
+    saveUser(chatId, users[chatId]);
   }
   
   // Track if we've handled this message

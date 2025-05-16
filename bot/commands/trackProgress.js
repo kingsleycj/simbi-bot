@@ -87,7 +87,7 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
     console.log(`TrackProgress - Chat ID: ${chatId}, Users keys:`, Object.keys(users));
     console.log(`User data exists: ${!!users[chatId]}`);
     if (users[chatId]) {
-      console.log(`User has wallet: ${!!users[chatId].address}, Wallet: ${users[chatId].address}`);
+      console.log(`User has wallet: ${!!users[chatId].walletAddress}, Wallet: ${users[chatId].walletAddress}`);
     }
     
   const SIMBI_CONTRACT_ADDRESS = process.env.SIMBI_CONTRACT_ADDRESS;
@@ -97,7 +97,7 @@ const handleTrackProgressCommand = async (bot, users, chatId) => {
 
     // First ensure we stringify the chatId for consistency
     const userChatId = chatId.toString();
-    const userAddress = users[userChatId]?.address;
+    const userAddress = users[userChatId]?.walletAddress;
 
   if (!userAddress) {
       console.error('No wallet address found for user', userChatId);
@@ -439,7 +439,7 @@ const handleAchievementNFTs = async (bot, users, chatId) => {
 
     // First ensure we stringify the chatId for consistency
     const userChatId = chatId.toString();
-    const userAddress = users[userChatId]?.address;
+    const userAddress = users[userChatId]?.walletAddress;
 
   if (!userAddress) {
       console.error('No wallet address found for user', userChatId);
@@ -709,7 +709,7 @@ const handleShareProgress = async (bot, users, chatId) => {
     
     // First ensure we stringify the chatId for consistency
     const userChatId = chatId.toString();
-    const userAddress = users[userChatId]?.address;
+    const userAddress = users[userChatId]?.walletAddress;
     
     if (!userAddress) {
       console.error('No wallet address found for user', userChatId);
@@ -803,7 +803,7 @@ const mintNFTBadge = async (bot, users, chatId, tier) => {
 
     // First ensure we stringify the chatId for consistency
     const userChatId = chatId.toString();
-    const userAddress = users[userChatId]?.address;
+    const userAddress = users[userChatId]?.walletAddress;
 
     if (!userAddress) {
       console.error('No wallet address found for user', userChatId);

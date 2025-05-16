@@ -1,11 +1,10 @@
 // It allows users to select a quiz category, answer questions, and rewards them with tokens for correct answers.
 import { ethers } from 'ethers';
-import { promises as fs } from 'fs';
-import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import dotenv from 'dotenv';
 import { createRequire } from 'module';
+import { getUser, saveUser, loadUsers, saveUsers } from '../db-adapter.js';
 
 const require = createRequire(import.meta.url);
 const quizData = require('../../utils/quizQuestions.json');
@@ -137,372 +136,56 @@ const verifyEnvironment = () => {
   }
 };
 
-// Path to users.json file
-const USERS_FILE_PATH = path.join(process.cwd(), 'users.json');
-
-// Check if users.json exists
-(async () => {
-  try {
-    await fs.access(USERS_FILE_PATH);
-    console.log('users.json found at:', USERS_FILE_PATH);
-    
-    // Log file contents
-    const contents = await fs.readFile(USERS_FILE_PATH, 'utf8');
-    console.log('Current users.json contents:', contents);
-  } catch (error) {
-    console.error('Error accessing users.json:', error);
-  }
-})();
-
 console.log('Loaded Quiz Data:', quizData); // Debugging log
 
 console.log('Environment Variables Debug:');
 console.log('BASE_SEPOLIA_RPC_URL:', process.env.BASE_SEPOLIA_RPC_URL);
 console.log('SIMBIQUIZMANAGER_CA:', process.env.SIMBIQUIZMANAGER_CA);
 
-// Update the loadUsers function
-async function loadUsers() {
+// Continue with the rest of the file, replacing the direct users.json calls
+const handleQuizCommand = async (bot, users, chatId, quizManagerAddress, privateKey, rpcUrl) => {
   try {
-    console.log('Attempting to load users from:', USERS_FILE_PATH);
-    const data = await fs.readFile(USERS_FILE_PATH, 'utf8');
+    // Get user data from database
+    const userInfo = await getUser(chatId.toString());
     
-    // Handle empty file case
-    if (!data.trim()) {
-      console.log('users.json is empty, initializing with empty object');
-      await fs.writeFile(USERS_FILE_PATH, '{}');
-      return {};
-    }
-
-    const users = JSON.parse(data);
-    console.log('Successfully loaded users:', users);
-    return users;
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      console.log('users.json not found, creating new file');
-      await fs.writeFile(USERS_FILE_PATH, '{}');
-      return {};
-    }
-    
-    if (error instanceof SyntaxError) {
-      console.log('Invalid JSON in users.json, resetting file');
-      await fs.writeFile(USERS_FILE_PATH, '{}');
-      return {};
-    }
-    
-    console.error('Error loading users:', error);
-    return {};
-  }
-}
-
-// Save users data to file
-async function saveUsers(users) {
-  try {
-    await fs.writeFile(USERS_FILE_PATH, JSON.stringify(users, null, 2));
-  } catch (error) {
-    console.error('Error saving users:', error);
-  }
-}
-
-const handleQuizCommand = async (bot, users, chatId) => {
-  // Always load fresh user data
-  const freshUsers = await loadUsers();
-  
-  // Update in-memory users with fresh data
-  if (freshUsers[chatId] && !users[chatId]) {
-    users[chatId] = freshUsers[chatId];
-  }
-
-  const categories = Object.keys(quizData);
-
-  if (categories.length === 0) {
-    bot.sendMessage(chatId, '❌ No quiz categories available. Please try again later.');
-    return;
-  }
-
-  const options = {
-    reply_markup: {
-      inline_keyboard: categories.map((category) => [
-        { text: category.charAt(0).toUpperCase() + category.slice(1), callback_data: `quiz_${category}` }
-      ])
-    }
-  };
-
-  bot.sendMessage(chatId, '📝 *Choose a Quiz Category:*', { parse_mode: 'Markdown', ...options })
-    .catch((error) => {
-      console.error('Error:', error.message, error.stack);
-      console.error('Error sending quiz categories:', error);
-    });
-};
-
-// Update the handleQuizCallback function to ensure users data is loaded
-const handleQuizCallback = async (bot, users, chatId, data) => {
-  try {
-    console.log('\n=== Quiz Start Debug ===');
-    // Always load fresh user data
-    const currentUsers = await loadUsers();
-    console.log('Current users data:', currentUsers);
-    console.log('Chat ID:', chatId);
-    
-    // Update in-memory users with fresh data
-    if (currentUsers[chatId] && !users[chatId]) {
-      users[chatId] = currentUsers[chatId];
-    }
-    
-    // Log registration status
-    if (users[chatId]) {
-      console.log('User wallet:', users[chatId].address);
-      console.log('Is registered:', users[chatId].isRegistered);
-    }
-
-    // 1. Check if user has wallet and is registered
-    if (!users[chatId] || !users[chatId].address || !users[chatId].isRegistered) {
-      await bot.sendMessage(
-        chatId, 
-        '❌ Please use /start first to create and register your wallet.'
+    // Check if user has a wallet address
+    if (!userInfo || !userInfo.walletAddress) {
+      return bot.sendMessage(
+        chatId,
+        "⚠️ You don't have a wallet yet. Use /start to create one and then try again.",
+        {
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+          }
+        }
       );
+    }
+
+    const categories = Object.keys(quizData);
+
+    if (categories.length === 0) {
+      bot.sendMessage(chatId, '❌ No quiz categories available. Please try again later.');
       return;
     }
 
-    // 2. Initialize quiz state
-    const category = data.split('_')[1];
-    const quizzes = quizData[category];
-    
-    if (!quizzes || !Array.isArray(quizzes)) {
-      throw new Error(`Invalid quiz category: ${category}`);
-    }
-
-    users[chatId] = {
-      ...currentUsers[chatId],
-      score: 0,
-      currentQuestionIndex: 0,
-      category: category,
-      quizStartTime: Date.now()
-    };
-
-    // 3. Display first question
-    const firstQuiz = quizzes[0];
     const options = {
       reply_markup: {
-        inline_keyboard: firstQuiz.options.map((option, index) => [
-          { text: option, callback_data: `answer_0_${index}` }
+        inline_keyboard: categories.map((category) => [
+          { text: category.charAt(0).toUpperCase() + category.slice(1), callback_data: `quiz_${category}` }
         ])
       }
     };
 
-    await bot.sendMessage(
-      chatId,
-      `📝 *${category.charAt(0).toUpperCase() + category.slice(1)} Quiz:*\n\n` +
-      `Question 1/${quizzes.length}\n\n${firstQuiz.question}`,
-      { parse_mode: 'Markdown', ...options }
-    );
-
-    // 4. Save quiz state
-    await saveUsers(users);
-
+    bot.sendMessage(chatId, '📝 *Choose a Quiz Category:*', { parse_mode: 'Markdown', ...options })
+      .catch((error) => {
+        console.error('Error:', error.message, error.stack);
+        console.error('Error sending quiz categories:', error);
+      });
   } catch (error) {
-    console.error('Quiz error:', error);
-    await bot.sendMessage(
-      chatId, 
-      '❌ An error occurred starting the quiz.\n' +
-      'Please try again or contact support.'
-    );
-  }
-};
-
-const handleAnswerCallback = async (bot, users, chatId, data) => {
-  try {
-    console.log('Answer callback received:', data);
-    console.log('Answer callback parts:', data.split('_'));
-    const chatIdStr = chatId.toString();
-    console.log('ChatId (string):', chatIdStr);
-    console.log('Users object has this chatId:', !!users[chatIdStr]);
-    
-    // Always reload the latest user data
-    const currentUsers = await loadUsers();
-    if (currentUsers[chatIdStr]) {
-      users[chatIdStr] = currentUsers[chatIdStr];
-      console.log('Reloaded user data from file');
-    }
-    
-    const userInfo = users[chatIdStr];
-    console.log('User info object:', userInfo ? 'exists' : 'missing');
-    
-    if (!userInfo) {
-      return bot.sendMessage(
-        chatId,
-        "❌ User data not found. Please use /start to initialize your account.",
-        {
-          reply_markup: {
-            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
-          }
-        }
-      );
-    }
-    
-    console.log('User category:', userInfo.category);
-    console.log('User currentQuestionIndex:', userInfo.currentQuestionIndex);
-    
-    // Parse answer data
-    const parts = data.split('_');
-    const questionIndex = parseInt(parts[1]);
-    const selectedAnswerIndex = parseInt(parts[2]);
-    
-    console.log('Parsed question index:', questionIndex);
-    console.log('Parsed answer index:', selectedAnswerIndex);
-    
-    // Verify quiz data exists - Fix the logic for checking if currentQuestionIndex is undefined
-    if (userInfo.currentQuestionIndex === undefined || !userInfo.category) {
-      return bot.sendMessage(
-        chatId,
-        "❌ No active quiz found. Please start a new quiz with /quiz.",
-        {
-          reply_markup: {
-            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
-          }
-        }
-      );
-    }
-    
-    // Get question data
-    const category = userInfo.category;
-    console.log('Category from user info:', category);
-    console.log('Category exists in quizData:', !!quizData[category]);
-    
-    // Make sure the category exists in quizData
-    if (!quizData[category] || !Array.isArray(quizData[category])) {
-      console.error('Invalid category or quiz structure:', category);
-      return bot.sendMessage(
-        chatId,
-        "❌ Invalid quiz category. Please try again with a different category.",
-        {
-          reply_markup: {
-            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
-          }
-        }
-      );
-    }
-    
-    // Check if we can find the question
-    console.log('Quiz data length for this category:', quizData[category].length);
-    console.log('Question index we are looking for:', questionIndex);
-    
-    const currentQuestion = quizData[category][questionIndex];
-    
-    if (!currentQuestion) {
-      console.error('Question not found:', questionIndex, 'in category', category);
-      return bot.sendMessage(
-        chatId,
-        "❌ Question data not found. Please restart the quiz with /quiz.",
-        {
-          reply_markup: {
-            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
-          }
-        }
-      );
-    }
-    
-    console.log('Current question found:', currentQuestion.question);
-    console.log('Question options:', currentQuestion.options);
-    console.log('Correct answer:', currentQuestion.answer);
-    console.log('Selected answer index:', selectedAnswerIndex);
-    console.log('Selected answer:', currentQuestion.options[selectedAnswerIndex]);
-    
-    // Check if answer is correct
-    const correctAnswerIndex = currentQuestion.options.indexOf(currentQuestion.answer);
-    console.log('Correct answer index:', correctAnswerIndex);
-    const isCorrect = selectedAnswerIndex === correctAnswerIndex;
-    console.log('Answer is correct:', isCorrect);
-    
-    // Initialize score if not present
-    if (!userInfo.score) {
-      userInfo.score = 0;
-    }
-    
-    // Update user's quiz score
-    if (isCorrect) {
-      userInfo.score += 1; // Add 1 point for correct answer (instead of 10)
-      console.log('Score updated to:', userInfo.score);
-    }
-    
-    // Send feedback message
-    const feedbackMessage = isCorrect ? 
-      `✅ Correct! ${currentQuestion.explanation || ''}` :
-      `❌ Incorrect. The correct answer is: ${currentQuestion.answer}. ${currentQuestion.explanation || ''}`;
-    
-    await bot.sendMessage(chatId, feedbackMessage);
-    
-    // Check if this was the last question
-    if (questionIndex >= quizData[category].length - 1) {
-      // Quiz completed
-      userInfo.completedQuizzes = (userInfo.completedQuizzes || 0) + 1; 
-      
-      // IMPORTANT: Update cumulative quiz score in user data using actual score
-      // Make sure we're not adding large numbers to the cumulative score
-      userInfo.quizScore = (userInfo.quizScore || 0) + userInfo.score;
-      
-      console.log(`Quiz completed. Final score: ${userInfo.score}, Cumulative score: ${userInfo.quizScore}`);
-      
-      // Reset quiz state
-      userInfo.currentQuestionIndex = 0;
-      const finalScore = userInfo.score;
-      userInfo.score = 0;
-      
-      // Save user data
-      await saveUsers(users);
-      
-      // Process rewards
-      try {
-        await processQuizReward(bot, chatId, userInfo.address, finalScore);
-      } catch (rewardError) {
-        console.error('Error processing quiz reward:', rewardError);
-      }
-      
-      // Show completion message
-      await bot.sendMessage(
-        chatId,
-        `🎉 Quiz completed!\n\nYour score: ${finalScore}/${quizData[category].length}\nCompleted quizzes: ${userInfo.completedQuizzes}\nCumulative score: ${userInfo.quizScore}`,
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: "📚 Take Another Quiz", callback_data: "quiz" },
-                { text: "📊 View Progress", callback_data: "progress" }
-              ],
-              [{ text: "🔙 Back to Menu", callback_data: "menu" }]
-            ]
-          }
-        }
-      );
-    } else {
-      // Send next question
-      const nextQuestionIndex = questionIndex + 1;
-      userInfo.currentQuestionIndex = nextQuestionIndex;
-      
-      // Save user data after each question
-      await saveUsers(users);
-      
-      // Send next question
-      const nextQuestion = quizData[category][nextQuestionIndex];
-      const options = {
-        reply_markup: {
-          inline_keyboard: nextQuestion.options.map((option, index) => [
-            { text: option, callback_data: `answer_${nextQuestionIndex}_${index}` }
-          ])
-        }
-      };
-      
-      await bot.sendMessage(
-        chatId,
-        `📝 *${category.charAt(0).toUpperCase() + category.slice(1)} Quiz:*\n\n` +
-        `Question ${nextQuestionIndex + 1}/${quizData[category].length}\n\n${nextQuestion.question}`,
-        { parse_mode: 'Markdown', ...options }
-      );
-    }
-  } catch (error) {
-    console.error('Error handling answer callback:', error);
+    console.error('Error handling quiz command:', error);
     bot.sendMessage(
       chatId,
-      "❌ An error occurred while processing your answer. Please try again.",
+      '❌ An error occurred while processing the quiz command. Please try again later.',
       {
         reply_markup: {
           inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
@@ -512,107 +195,260 @@ const handleAnswerCallback = async (bot, users, chatId, data) => {
   }
 };
 
-const progressToNextQuestion = async (bot, users, chatId, category, quizzes) => {
-  const userProgress = users[chatId];
-  userProgress.currentQuestionIndex += 1;
+const handleQuizCallback = async (bot, users, chatId, data) => {
+  try {
+    // Get user from database
+    const userInfo = await getUser(chatId);
+    if (!userInfo) {
+      return bot.sendMessage(chatId, '❌ User not found. Please use /start to set up.');
+    }
+    
+    // Check if it's a quiz category selection
+    if (data.startsWith('quiz_')) {
+      const category = data.split('_')[1];
+      
+      if (!quizData[category]) {
+        return bot.sendMessage(chatId, '❌ Invalid category selected. Please try again.');
+      }
+      
+      // Update user data for new quiz
+      const updatedUserInfo = {
+        ...userInfo,
+        category,
+        currentQuestionIndex: 0,
+        quizStartTime: Date.now(),
+        quizScore: 0
+      };
+      
+      // Save to database
+      await saveUser(chatId, updatedUserInfo);
+      
+      // Start the quiz by showing the first question
+      await progressToNextQuestion(bot, users, chatId, category, quizData[category]);
+    }
+  } catch (error) {
+    console.error('Error handling quiz callback:', error);
+    bot.sendMessage(
+      chatId,
+      '❌ An error occurred. Please try again later.',
+      {
+        reply_markup: {
+          inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+        }
+      }
+    );
+  }
+};
 
-  if (userProgress.currentQuestionIndex >= quizzes.length) {
-    const finalScore = userProgress.score;
+const handleAnswerCallback = async (bot, users, chatId, data) => {
+  try {
+    // Get user from database
+    const userInfo = await getUser(chatId);
+    
+    if (!userInfo) {
+      return bot.sendMessage(chatId, '❌ User not found. Please use /start to set up.');
+    }
+    
+    if (!data.startsWith('answer_')) {
+      return;
+    }
+    
+    const selectedAnswer = parseInt(data.split('_')[1], 10);
+    const { category, currentQuestionIndex } = userInfo;
+    
+    if (!category || currentQuestionIndex === undefined || !quizData[category]) {
+      return bot.sendMessage(
+        chatId,
+        '❌ Quiz session not found. Please start a new quiz with /quiz.',
+        {
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+          }
+        }
+      );
+    }
+    
+    const quizzes = quizData[category];
+    const currentQuiz = quizzes[currentQuestionIndex];
+    
+    if (!currentQuiz) {
+      return bot.sendMessage(
+        chatId,
+        '❌ Question not found. Please start a new quiz with /quiz.',
+        {
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+          }
+        }
+      );
+    }
+    
+    const correctAnswerIndex = currentQuiz.correctAnswerIndex;
+    const isCorrect = selectedAnswer === correctAnswerIndex;
+    
+    // Update score
+    const currentScore = userInfo.quizScore || 0;
+    const newScore = isCorrect ? currentScore + 1 : currentScore;
+    
+    // Update user data
+    const updatedUserInfo = {
+      ...userInfo,
+      quizScore: newScore,
+      currentQuestionIndex: currentQuestionIndex + 1
+    };
+    
+    // Save to database
+    await saveUser(chatId, updatedUserInfo);
+    
+    // Show result of the current question
+    const resultMessage = isCorrect
+      ? '✅ Correct answer!'
+      : `❌ Incorrect. The correct answer was: ${currentQuiz.answers[correctAnswerIndex]}`;
+    
+    await bot.sendMessage(chatId, resultMessage);
+    
+    // Check if quiz is complete
+    if (currentQuestionIndex + 1 >= quizzes.length) {
+      await completeQuiz(bot, chatId, newScore, quizzes.length);
+    } else {
+      // Proceed to next question
+      await progressToNextQuestion(bot, users, chatId, category, quizzes);
+    }
+  } catch (error) {
+    console.error('Error handling answer callback:', error);
+    bot.sendMessage(
+      chatId,
+      '❌ An error occurred. Please try again later.',
+      {
+        reply_markup: {
+          inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+        }
+      }
+    );
+  }
+};
+
+// Helper to show the next question
+const progressToNextQuestion = async (bot, users, chatId, category, quizzes) => {
+  try {
+    // Get updated user data
+    const userInfo = await getUser(chatId);
+    
+    if (!userInfo || category !== userInfo.category) {
+      return bot.sendMessage(
+        chatId,
+        '❌ Quiz session lost. Please start a new quiz with /quiz.',
+        {
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+          }
+        }
+      );
+    }
+    
+    const currentQuestionIndex = userInfo.currentQuestionIndex || 0;
+    
+    if (currentQuestionIndex >= quizzes.length) {
+      return completeQuiz(bot, chatId, userInfo.quizScore || 0, quizzes.length);
+    }
+    
+    const currentQuiz = quizzes[currentQuestionIndex];
+    
+    if (!currentQuiz) {
+      return bot.sendMessage(
+        chatId,
+        '❌ Question not found. Please start a new quiz with /quiz.',
+        {
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+          }
+        }
+      );
+    }
+    
+    const questionNumber = currentQuestionIndex + 1;
+    const totalQuestions = quizzes.length;
+    
+    const questionMessage = `
+📝 *Quiz: ${category.charAt(0).toUpperCase() + category.slice(1)}*
+*Question ${questionNumber}/${totalQuestions}:*
+
+${currentQuiz.question}
+`;
+    
+    const options = {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: currentQuiz.answers.map((answer, index) => [
+          { text: answer, callback_data: `answer_${index}` }
+        ])
+      }
+    };
+    
+    await bot.sendMessage(chatId, questionMessage, options);
+  } catch (error) {
+    console.error('Error progressing to next question:', error);
+    bot.sendMessage(
+      chatId,
+      '❌ An error occurred. Please try again later.',
+      {
+        reply_markup: {
+          inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+        }
+      }
+    );
+  }
+};
+
+// Function to complete the quiz and handle rewards
+const completeQuiz = async (bot, chatId, score, totalQuestions) => {
+  try {
+    // Get user from database
+    const userInfo = await getUser(chatId);
+    
+    if (!userInfo || !userInfo.walletAddress) {
+      return bot.sendMessage(
+        chatId,
+        "⚠️ You need a wallet to record quiz results. Use /start to create one.",
+        {
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+          }
+        }
+      );
+    }
+    
+    // Calculate percentage score
+    const percentage = Math.round((score / totalQuestions) * 100);
+    
+    // Format the score for display
+    const formattedScore = score;
+    
+    // Show loading message while we process the blockchain reward
+    const loadingMessage = await bot.sendMessage(chatId, "🔄 Processing your quiz results and token reward...");
     
     try {
-      verifyEnvironment();
+      // Reward tokens via smart contract
+      await processQuizReward(bot, chatId, userInfo.walletAddress, formattedScore);
       
-      const provider = new ethers.JsonRpcProvider(process.env.BASE_SEPOLIA_RPC_URL);
-      const userAddress = users[chatId]?.address;
-      
-      if (!userAddress) {
-        throw new Error('No wallet address found. Use /start to create one.');
-      }
-
-      // Check registration status first
-      console.log('Checking wallet registration...');
-      const quizManager = new ethers.Contract(
-        process.env.SIMBIQUIZMANAGER_CA,
-        QUIZ_MANAGER_ABI,
-        provider
-      );
-
-      const isRegistered = await quizManager.isRegistered(userAddress);
-      console.log('Is registered:', isRegistered);
-
-      if (!isRegistered) {
-        await bot.sendMessage(
-          chatId,
-          '⚠️ Your wallet needs to be registered first.\n' +
-          'Please use /start to register your wallet.'
-        );
-        return;
-      }
-
-      // Proceed with reward if registered
-      await handleTokenReward(bot, chatId, userAddress, finalScore);
-
-    } catch (error) {
-      console.error('Quiz completion error:', {
-        message: error.message,
-        code: error.code,
-        reason: error.reason
-      });
-      
-      await bot.sendMessage(
-        chatId,
-        `⚠️ Error processing quiz completion:\n${error.message}\n\n` +
-        'Please try using /start to re-register your wallet.'
-      );
+      // Delete loading message
+      await bot.deleteMessage(chatId, loadingMessage.message_id);
+    } catch (rewardError) {
+      console.error('Error processing quiz reward:', rewardError);
     }
-
-    // Instead of deleting user data, just remove the quiz progress
-    // We keep the user's wallet and other information
-    if (users[chatId]) {
-      // Increment completedQuizzes counter
-      if (!users[chatId].completedQuizzes) {
-        users[chatId].completedQuizzes = 1;
-      } else {
-        users[chatId].completedQuizzes += 1;
+  } catch (error) {
+    console.error('Error completing quiz:', error);
+    bot.sendMessage(
+      chatId,
+      '❌ An error occurred while completing the quiz. Your progress has been saved.',
+      {
+        reply_markup: {
+          inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+        }
       }
-      
-      // Add quiz score to cumulative score (using the actual score, not multiplying by 10)
-      if (!users[chatId].quizScore) {
-        users[chatId].quizScore = finalScore;
-      } else {
-        users[chatId].quizScore += finalScore;
-      }
-      console.log(`Updated quiz stats: completedQuizzes=${users[chatId].completedQuizzes}, quizScore=${users[chatId].quizScore}`);
-      
-      // Remove only quiz-specific properties
-      delete users[chatId].score;
-      delete users[chatId].currentQuestionIndex;
-      delete users[chatId].category;
-      delete users[chatId].quizStartTime;
-    }
-    
-    return;
+    );
   }
-
-  // Show next question
-  const nextQuiz = quizzes[userProgress.currentQuestionIndex];
-  const options = {
-    reply_markup: {
-      inline_keyboard: nextQuiz.options.map((option, index) => [
-        { text: option, callback_data: `answer_${category}_${index}` }
-      ])
-    }
-  };
-
-  bot.sendMessage(
-    chatId,
-    `📝 *${category.charAt(0).toUpperCase() + category.slice(1)} Quiz:*\n\n` +
-    `Question ${userProgress.currentQuestionIndex + 1}/${quizzes.length}\n\n${nextQuiz.question}`,
-    { parse_mode: 'Markdown', ...options }
-  ).catch((error) => {
-    console.error('Error sending next question:', error);
-  });
-}
+};
 
 // Update the handleTokenReward function
 const handleTokenReward = async (bot, chatId, userAddress, finalScore) => {
@@ -978,7 +814,7 @@ const handleReregister = async (bot, chatId) => {
   try {
     // Always load fresh user data
     const users = await loadUsers();
-    const userWallet = users[chatId]?.address;
+    const userWallet = users[chatId]?.walletAddress;
     
     if (!userWallet) {
       await bot.sendMessage(chatId, '❌ No wallet found. Please use /start first.');
