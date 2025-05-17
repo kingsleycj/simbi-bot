@@ -254,7 +254,7 @@ const handleChatCommand = async (bot, chatId, users = {}, msg = null) => {
     const chatIdStr = chatId.toString();
     
     // Fetch the user's data from the database
-    const userInfo = await getUser(chatIdStr);
+    let userInfo = await getUser(chatIdStr);
     console.log(`User data fetched for chat initialization ${chatIdStr}:`, userInfo ? 'Success' : 'Not found');
     
     // Ensure user has a record and set chat mode
