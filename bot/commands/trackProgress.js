@@ -45,7 +45,9 @@ const BADGE_NFT_ABI = [
   "function getAttemptCounts(address user) view returns (uint256, uint256, uint256)",
   "function getEligibleTier(address user) view returns (uint8)",
   "function getBadgeTier(uint256 tokenId) view returns (uint8)",
-  "function tokenURI(uint256 tokenId) view returns (string)"
+  "function tokenURI(uint256 tokenId) view returns (string)",
+  "function getTierBaseURI(uint8 tier) view returns (string memory)",
+  "function safeMint(address to, uint8 tier)"
 ];
 
 // QuizManager ABI for study metrics
@@ -845,6 +847,13 @@ const mintNFTBadge = async (bot, users, chatId, tier) => {
       );
     }
     
+    // Log blockchain connection details for debugging
+    console.log('NFT Minting - Blockchain connection details:');
+    console.log('Contract Address:', SIMBIBADGE_NFT_CA);
+    console.log('RPC URL:', BASE_SEPOLIA_RPC_URL ? 'Set' : 'Missing');
+    console.log('Private Key:', PRIVATE_KEY ? 'Set (hidden)' : 'Missing');
+    console.log('User Wallet:', userInfo.walletAddress);
+    
     // Validate tier
     if (tier < 0 || tier > 2) {
       return bot.sendMessage(
@@ -871,9 +880,28 @@ const mintNFTBadge = async (bot, users, chatId, tier) => {
     
     // Initialize provider and signer
     const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC_URL);
-    const botWallet = new ethers.Wallet(PRIVATE_KEY, provider);
     
-    // Initialize badge NFT contract
+    // Check provider connection
+    try {
+      const network = await provider.getNetwork();
+      console.log('Connected to network:', network.name, 'Chain ID:', network.chainId);
+    } catch (networkError) {
+      console.error('Error connecting to network:', networkError);
+      return bot.sendMessage(
+        chatId,
+        '❌ Failed to connect to the blockchain network. Please try again later.',
+        {
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]]
+          }
+        }
+      );
+    }
+    
+    const botWallet = new ethers.Wallet(PRIVATE_KEY, provider);
+    console.log('Bot wallet address:', botWallet.address);
+    
+    // Initialize badge NFT contract with full ABI for better debugging
     const badgeNFT = new ethers.Contract(
       SIMBIBADGE_NFT_CA,
       BADGE_NFT_ABI,
@@ -903,7 +931,7 @@ const mintNFTBadge = async (bot, users, chatId, tier) => {
       console.error('Error checking eligibility:', error);
       
       // Check if error is "No eligible tier"
-      if (error.message.includes('No eligible tier')) {
+      if (error.message && error.message.includes('No eligible tier')) {
         return bot.sendMessage(
           chatId,
           `❌ You are not eligible for any badge tier yet.\n\nComplete more study sessions to earn badges! You need at least 20 completed sessions for Bronze tier.`,
@@ -918,21 +946,119 @@ const mintNFTBadge = async (bot, users, chatId, tier) => {
         );
       }
       
+      // Log more detailed error information for debugging
+      console.error('Detailed eligibility check error:', {
+        message: error.message,
+        code: error.code,
+        reason: error.reason,
+        data: error.data,
+        transaction: error.transaction
+      });
+      
       // If we can't verify eligibility due to other errors, try to mint anyway
       // The contract should have its own checks in place
       console.log('Proceeding with mint attempt despite eligibility check failure');
     }
     
+    // Get current gas price for better transaction handling
+    const feeData = await provider.getFeeData();
+    console.log('Current gas price data:', {
+      gasPrice: feeData.gasPrice?.toString(),
+      maxFeePerGas: feeData.maxFeePerGas?.toString(),
+      maxPriorityFeePerGas: feeData.maxPriorityFeePerGas?.toString(),
+    });
+    
     // Attempt to mint the NFT
     try {
+      // Check if the function exists
+      let functionExists = false;
+      try {
+        const fragment = badgeNFT.interface.getFunction('safeMint');
+        functionExists = !!fragment;
+        console.log('safeMint function exists:', functionExists);
+      } catch (fragError) {
+        console.error('Error checking for safeMint function:', fragError);
+      }
+      
+      if (!functionExists) {
+        console.log('Attempting to load full contract ABI from file...');
+        try {
+          // Use fs to read the ABI file contents directly instead of import
+          const fullABIPath = path.join(process.cwd(), 'utils', 'SimbiBadgeNFT.json');
+          console.log('Attempting to load ABI from:', fullABIPath);
+          
+          const abiData = await fs.readFile(fullABIPath, 'utf8');
+          const fullABI = JSON.parse(abiData);
+          console.log('Successfully loaded full ABI:', !!fullABI);
+          
+          // Create a new contract instance with the full ABI
+          const badgeNFTWithFullABI = new ethers.Contract(
+            SIMBIBADGE_NFT_CA,
+            fullABI,
+            botWallet
+          );
+          
+          console.log('Created new contract instance with full ABI');
+          
+          // Use this new instance for the mint operation
+          badgeNFT = badgeNFTWithFullABI;
+          console.log('Using full ABI for the minting operation');
+          
+          // Check again if the function exists now
+          const fragment = badgeNFT.interface.getFunction('safeMint');
+          functionExists = !!fragment;
+          console.log('safeMint function exists with full ABI:', functionExists);
+          
+          if (!functionExists) {
+            throw new Error('The safeMint function does not exist on the contract, even with full ABI');
+          }
+        } catch (abiError) {
+          console.error('Error loading full ABI from file:', abiError);
+          
+          // Final fallback: try using a minimal ABI with just the safeMint function
+          console.log('Attempting final fallback with minimal safeMint ABI...');
+          
+          const minimalSafeMintABI = [
+            "function safeMint(address to, uint8 tier)"
+          ];
+          
+          try {
+            const minimalBadgeNFT = new ethers.Contract(
+              SIMBIBADGE_NFT_CA,
+              minimalSafeMintABI,
+              botWallet
+            );
+            
+            console.log('Created contract with minimal safeMint ABI');
+            badgeNFT = minimalBadgeNFT;
+            functionExists = true;
+          } catch (minAbiError) {
+            console.error('Error with minimal ABI fallback:', minAbiError);
+            throw new Error('The safeMint function does not exist on the contract');
+          }
+        }
+      }
+      
+      // Prepare gas parameters
+      const gasParams = {
+        gasLimit: 1000000n, // Increased gas limit for safety
+      };
+      
+      // Add fee data if available
+      if (feeData.maxFeePerGas && feeData.maxPriorityFeePerGas) {
+        gasParams.maxFeePerGas = feeData.maxFeePerGas;
+        gasParams.maxPriorityFeePerGas = feeData.maxPriorityFeePerGas;
+      } else if (feeData.gasPrice) {
+        gasParams.gasPrice = feeData.gasPrice;
+      }
+      
+      console.log('Mint transaction gas parameters:', gasParams);
+      
+      // Send the transaction
       const tx = await badgeNFT.safeMint(
         userInfo.walletAddress,
         tier,
-        {
-          gasLimit: 500000n,
-          maxFeePerGas: ethers.parseUnits('2', 'gwei'),
-          maxPriorityFeePerGas: ethers.parseUnits('1.5', 'gwei')
-        }
+        gasParams
       );
       
       console.log('Mint transaction sent:', tx.hash);
@@ -940,7 +1066,8 @@ const mintNFTBadge = async (bot, users, chatId, tier) => {
       // Notify user of pending transaction
       await bot.sendMessage(
         chatId,
-        `🔄 Minting your ${tierName} Tier Badge...\n\nTransaction: https://sepolia.basescan.org/tx/${tx.hash}`
+        `🔄 *Minting your ${tierName} Tier Badge...*\n\nTransaction is processing on the blockchain.\n\nView on explorer: [${tx.hash.substring(0, 8)}...](https://sepolia.basescan.org/tx/${tx.hash})`,
+        { parse_mode: 'Markdown' }
       );
       
       // Wait for transaction confirmation
@@ -951,16 +1078,16 @@ const mintNFTBadge = async (bot, users, chatId, tier) => {
         // Try to get the badge URI or image if available
         let badgeImage = null;
         try {
-          // Get latest token ID (could be different depending on contract implementation)
-          const nftBalance = await badgeNFT.balanceOf(userInfo.walletAddress);
-          const baseUri = await badgeNFT.getTierBaseURI(tier);
+          const tierBaseURI = await badgeNFT.getTierBaseURI(tier);
+          console.log('Retrieved badge tier base URI:', tierBaseURI);
           
           // Extract IPFS URI if available
-          if (baseUri) {
-            badgeImage = baseUri.replace('ipfs://', 'https://ipfs.io/ipfs/');
+          if (tierBaseURI) {
+            badgeImage = tierBaseURI.replace('ipfs://', 'https://ipfs.io/ipfs/');
+            console.log('Badge image URL:', badgeImage);
           }
-        } catch (error) {
-          console.error('Error getting badge image:', error);
+        } catch (uriError) {
+          console.error('Error getting badge image URI:', uriError);
         }
         
         // Success message
@@ -1004,12 +1131,25 @@ const mintNFTBadge = async (bot, users, chatId, tier) => {
       // Handle specific error cases
       let errorMessage = '❌ Failed to mint NFT badge. ';
       
-      if (error.message.includes('already has badge')) {
+      // Extract the most meaningful error message
+      const errorDetails = error.reason || error.data?.message || error.error?.message || error.message || 'Unknown error';
+      
+      console.error('Detailed minting error:', {
+        message: error.message,
+        code: error.code,
+        reason: error.reason,
+        data: error.data,
+        transaction: error.transaction
+      });
+      
+      if (errorDetails.includes('already has badge') || errorDetails.includes('already minted')) {
         errorMessage = `You already own the ${tierName} Tier Badge.`;
-      } else if (error.message.includes('not eligible')) {
+      } else if (errorDetails.includes('not eligible')) {
         errorMessage = `You are not eligible for the ${tierName} Tier Badge yet. Keep completing study sessions!`;
-      } else if (error.message.includes('execution reverted')) {
-        errorMessage += 'The transaction was rejected by the blockchain.';
+      } else if (errorDetails.includes('execution reverted') || errorDetails.includes('transaction failed')) {
+        errorMessage += 'The transaction was rejected by the blockchain. This could be due to a contract rule or insufficient gas.';
+      } else if (errorDetails.includes('insufficient funds')) {
+        errorMessage = '❌ The bot does not have sufficient funds to mint the NFT. Please contact support.';
       } else {
         errorMessage += 'Please try again later.';
       }
