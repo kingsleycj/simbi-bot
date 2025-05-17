@@ -24,7 +24,10 @@
     "groq-sdk": "^0.3.3",
     "node-schedule": "^2.1.1",
     "node-telegram-bot-api": "^0.66.0",
-    "qrcode": "^1.5.4"
+    "pg": "^8.16.0",
+    "qrcode": "^1.5.4",
+    "sequelize": "^6.37.7",
+    "sqlite3": "^5.1.7"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^3.0.5",

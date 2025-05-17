@@ -12,4 +12,4 @@ scripts/local-migrate.js
 scripts/migrate-to-postgres.js
 users.json.backup-1747187165829
 users.json.backup-1747359205125
-scripts/render-build.sh
+

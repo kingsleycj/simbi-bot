@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: simbi-telegram-bot
+    name: simbi-bot
     env: node
     plan: free
     buildCommand: npm install
@@ -22,9 +22,15 @@ services:
         sync: false
       - key: SIMBIQUIZMANAGER_CA
         sync: false
-      - key: SIMBITOKEN_CA
+      - key: SIMBI_CONTRACT_ADDRESS
         sync: false
       - key: SIMBIBADGE_NFT_CA
         sync: false
-      - key: SIMBICREDENTIAL_NFT_CA
-        sync: false 
+      - key: SIMBI_CREDENTIAL_NFT
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: MIGRATE_FROM_JSON
+        value: "false"
