@@ -108,7 +108,7 @@ bot.onText(/\/study_session/, (msg) => handleStudySessionCommand(bot, users, msg
 bot.onText(/\/reset_study/, (msg) => handleResetStudySession(bot, users, msg.chat.id.toString()));
 bot.onText(/\/help/, (msg) => handleHelpCommand(bot, msg.chat.id.toString()));
 bot.onText(/\/profile/, (msg) => handleProfileInfo(bot, msg.chat.id.toString(), msg));
-bot.onText(/\/chat/, (msg) => handleChatCommand(bot, msg.chat.id.toString(), users));
+bot.onText(/\/chat/, (msg) => handleChatCommand(bot, msg.chat.id.toString(), users, msg));
 
 // Handle regular messages (for chat feature and other interactions)
 bot.on('message', (msg) => {
@@ -295,7 +295,7 @@ bot.on('callback_query', async (query) => {
       handleResetStudySession(bot, users, chatId);
     } else if (data === 'chat') {
       console.log('Triggering handleChatCommand...');
-      handleChatCommand(bot, chatId, users);
+      handleChatCommand(bot, chatId, users, query.message);
     } else {
       console.log('Unknown action received:', data);
       bot.sendMessage(
