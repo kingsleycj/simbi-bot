@@ -20,7 +20,7 @@ const QUIZ_MANAGER_ABI = [
 const BADGE_NFT_ABI = [
     "function recordQuizAttempt(address user, uint256 score) external",
     "function getEligibleTier(address user) external view returns (uint8)",
-    "function safeMint(address to, uint8 tier) external",
+    "function safeMint(address to, uint8 tier)",
     "function getAttemptCounts(address user) external view returns (uint256 bronze, uint256 silver, uint256 gold)",
     "function getTierBaseURI(uint8 tier) external view returns (string memory)"
 ];

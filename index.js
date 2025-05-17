@@ -340,6 +340,16 @@ app.use((err, req, res, next) => {
   res.status(500).send('Internal server error');
 });
 
+// Add a ping endpoint to check if the bot is running
+app.get('/ping', (req, res) => {
+  res.status(200).send('Bot is awake!');
+});
+
+// Add an additional ping endpoint at /webhook/ping for compatibility
+app.get(`${webhookPath}/ping`, (req, res) => {
+  res.status(200).send('Bot is awake!');
+});
+
 // Add process error handlers
 process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
