@@ -49,6 +49,11 @@ const User = sequelize.define('User', {
     defaultValue: false
   },
   // Other user data as JSON
+  // This field stores:
+  // - conversation history (conversationHistory array)
+  // - user preferences and settings
+  // - badge achievements
+  // - any other data that doesn't have a dedicated column
   userData: {
     type: DataTypes.JSONB,
     defaultValue: {}
