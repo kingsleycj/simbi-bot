@@ -22,7 +22,8 @@ const BADGE_NFT_ABI = [
     "function getEligibleTier(address user) external view returns (uint8)",
     "function safeMint(address to, uint8 tier)",
     "function getAttemptCounts(address user) external view returns (uint256 bronze, uint256 silver, uint256 gold)",
-    "function getTierBaseURI(uint8 tier) external view returns (string memory)"
+    "function getTierBaseURI(uint8 tier) external view returns (string memory)",
+    "function balanceOf(address owner) external view returns (uint256)"
 ];
 
 // Verify environment variables
@@ -783,6 +784,21 @@ const checkBadgeMilestone = async (bot, chatId, userAddress, completedSessions) 
             BADGE_NFT_ABI,
             botWallet
         );
+        
+        // NEW - Check if user already has a badge before proceeding
+        try {
+            const badgeBalance = await badgeNFT.balanceOf(userAddress);
+            console.log('Current badge balance:', badgeBalance);
+            
+            // If user already has at least one badge, we need to avoid minting again
+            if (badgeBalance > 0) {
+                console.log('User already has badges, skipping duplicate minting');
+                return;
+            }
+        } catch (balanceError) {
+            console.error('Error checking badge balance:', balanceError);
+            // Continue with the process despite the error to maintain backward compatibility
+        }
         
         // Get current attempt counts
         let bronze = 0, silver = 0, gold = 0;
